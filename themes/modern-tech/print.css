@@ -1,0 +1,38 @@
+@page {
+  size: {{page_size}};
+  margin: {{page_margin_top}} {{page_margin_right}} {{page_margin_bottom}} {{page_margin_left}};
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .document {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  figure,
+  pre,
+  tr {
+    break-inside: avoid;
+  }
+
+  .doc-cover,
+  .doc-toc {
+    break-after: page;
+  }
+
+  .chapter-breaks h1:not(:first-child),
+  .chapter-breaks h2 {
+    break-before: page;
+  }
+}

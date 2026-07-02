@@ -1,0 +1,17 @@
+services:
+  mdpdf-web:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - mdpdf-workdir:/app/workdir
+    environment:
+      MDPDF_BIND: 0.0.0.0:8080
+      MDPDF_WORKDIR: /app/workdir
+      MDPDF_THEMES: /app/themes
+      MDPDF_CHROMIUM: chromium
+      MDPDF_PRINT_SCRIPT: /app/scripts/print_pdf.mjs
+      MDPDF_PUPPETEER_CONFIG: /app/puppeteer-config.json
+
+volumes:
+  mdpdf-workdir:

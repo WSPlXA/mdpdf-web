@@ -1,0 +1,40 @@
+name: jp-standard
+page:
+  size: A4
+  margin:
+    top: 20mm
+    right: 18mm
+    bottom: 18mm
+    left: 18mm
+font:
+  body: Noto Sans JP
+  code: JetBrains Mono
+layout:
+  toc: false
+  page_number: true
+  chapter_page_break: false
+pdf:
+  print_background: true
+  prefer_css_page_size: true
+  chrome_margin:
+    top: 0
+    right: 0
+    bottom: 0
+    left: 0
+  header:
+    enabled: false
+  footer:
+    enabled: true
+    page_numbers: true
+    format: "{page} / {total}"
+    align: right
+    font_size: 8px
+    color: "#666"
+    padding_left: 18mm
+    padding_right: 18mm
+table:
+  font_size: 9.5pt
+  word_break: true
+mermaid:
+  format: svg
+  theme: default

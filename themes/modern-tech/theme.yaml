@@ -1,0 +1,47 @@
+name: modern-tech
+page:
+  size: A4
+  margin:
+    top: 22mm
+    right: 20mm
+    bottom: 22mm
+    left: 20mm
+font:
+  body: "Inter, system-ui, -apple-system, sans-serif"
+  code: "JetBrains Mono, SFMono-Regular, Consolas, monospace"
+layout:
+  toc: true
+  page_number: true
+  chapter_page_break: true
+pdf:
+  print_background: true
+  prefer_css_page_size: true
+  chrome_margin:
+    top: 0
+    right: 0
+    bottom: 0
+    left: 0
+  header:
+    enabled: true
+    text: "INTERNAL DESIGN DOCUMENT"
+    page_numbers: false
+    align: left
+    font_size: 8px
+    color: "#718096"
+    padding_left: 20mm
+    padding_right: 20mm
+  footer:
+    enabled: true
+    page_numbers: true
+    format: "Page {page} of {total}"
+    align: right
+    font_size: 8px
+    color: "#718096"
+    padding_left: 20mm
+    padding_right: 20mm
+table:
+  font_size: 9.5pt
+  word_break: true
+mermaid:
+  format: svg
+  theme: default

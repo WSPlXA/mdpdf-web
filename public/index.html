@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown PDF</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/prism.min.css">
+</head>
+<body>
+  <main class="shell">
+    <aside class="panel control" id="sidebar">
+      <header>
+        <h1>Markdown PDF</h1>
+        <span id="serverState">ready</span>
+      </header>
+
+      <label class="dropzone" for="fileInput">
+        <input id="fileInput" type="file" accept=".md,.markdown">
+        <strong id="fileLabel">选择 Markdown</strong>
+        <small id="fileMeta">.md / .markdown, max 10 MiB</small>
+      </label>
+
+      <label class="field">
+        <span>模板</span>
+        <select id="themeSelect">
+          <option value="jp-standard">jp-standard</option>
+          <option value="modern-tech">modern-tech</option>
+        </select>
+      </label>
+
+      <div class="toggles">
+        <label><input id="mermaidToggle" type="checkbox" checked> Mermaid</label>
+        <label><input id="strictToggle" type="checkbox"> 严格模式</label>
+      </div>
+
+      <section class="format-panel" aria-label="PDF format">
+        <h2>格式</h2>
+        <div class="toggles compact">
+          <label><input id="coverToggle" type="checkbox"> 封面</label>
+          <label><input id="tocToggle" type="checkbox"> 目录</label>
+          <label><input id="chapterBreakToggle" type="checkbox"> 章节分页</label>
+        </div>
+        <label class="field">
+          <span>文档编号</span>
+          <input id="docCodeInput" type="text" placeholder="DOC-001">
+        </label>
+        <div class="margin-grid">
+          <label class="field">
+            <span>版本</span>
+            <input id="versionInput" type="text" placeholder="v1.0">
+          </label>
+          <label class="field">
+            <span>作者/部门</span>
+            <input id="ownerInput" type="text" placeholder="平台组">
+          </label>
+        </div>
+        <label class="field">
+          <span>页面</span>
+          <select id="pageSizeSelect">
+            <option value="A4">A4</option>
+            <option value="A3">A3</option>
+            <option value="Letter">Letter</option>
+          </select>
+        </label>
+        <div class="margin-grid">
+          <label class="field">
+            <span>上</span>
+            <input id="marginTopInput" type="text" value="20mm" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>右</span>
+            <input id="marginRightInput" type="text" value="18mm" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>下</span>
+            <input id="marginBottomInput" type="text" value="18mm" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>左</span>
+            <input id="marginLeftInput" type="text" value="18mm" inputmode="decimal">
+          </label>
+        </div>
+        <div class="toggles compact">
+          <label><input id="headerToggle" type="checkbox"> 页眉</label>
+        </div>
+        <label class="field">
+          <span>页眉</span>
+          <input id="headerFormatInput" type="text" placeholder="内部文档" value="">
+        </label>
+        <label class="field">
+          <span>页眉位置</span>
+          <select id="headerAlignSelect">
+            <option value="left">left</option>
+            <option value="center">center</option>
+            <option value="right">right</option>
+          </select>
+        </label>
+
+        <div class="toggles compact">
+          <label><input id="pageNumberToggle" type="checkbox" checked> 页码</label>
+        </div>
+        <label class="field">
+          <span>页脚</span>
+          <input id="footerFormatInput" type="text" value="{page} / {total}">
+        </label>
+        <label class="field">
+          <span>位置</span>
+          <select id="footerAlignSelect">
+            <option value="right">right</option>
+            <option value="center">center</option>
+            <option value="left">left</option>
+          </select>
+        </label>
+      </section>
+
+      <div class="actions">
+        <button id="previewBtn" type="button">预览</button>
+        <button id="convertBtn" type="button">导出 PDF</button>
+      </div>
+    </aside>
+
+    <section class="panel editor">
+      <header>
+        <button id="toggleSidebarBtn" class="toggle-sidebar-btn" type="button" title="收起/展开设置面板">⚙️ 设置</button>
+        <h2>Markdown 编辑器</h2>
+        <a id="downloadLink" class="download-link-btn" href="#" hidden>📥 下载 PDF</a>
+      </header>
+      <div class="editor-body">
+        <textarea id="markdownEditor" placeholder="选择、拖入文件，或在此直接输入并编辑 Markdown 内容..."></textarea>
+      </div>
+    </section>
+
+    <section class="panel preview">
+      <iframe id="previewFrame" title="preview"></iframe>
+    </section>
+  </main>
+  <script src="/prism.min.js"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

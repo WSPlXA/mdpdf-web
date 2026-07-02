@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,12 +17,12 @@
 
       <label class="dropzone" for="fileInput">
         <input id="fileInput" type="file" accept=".md,.markdown">
-        <strong id="fileLabel">选择 Markdown</strong>
-        <small id="fileMeta">.md / .markdown, max 10 MiB</small>
+        <strong id="fileLabel">Markdownを選択</strong>
+        <small id="fileMeta">.md / .markdown、最大 10 MiB</small>
       </label>
 
       <label class="field">
-        <span>模板</span>
+        <span>テンプレート</span>
         <select id="themeSelect">
           <option value="jp-standard">jp-standard</option>
           <option value="modern-tech">modern-tech</option>
@@ -31,32 +31,32 @@
 
       <div class="toggles">
         <label><input id="mermaidToggle" type="checkbox" checked> Mermaid</label>
-        <label><input id="strictToggle" type="checkbox"> 严格模式</label>
+        <label><input id="strictToggle" type="checkbox"> 厳格モード</label>
       </div>
 
       <section class="format-panel" aria-label="PDF format">
-        <h2>格式</h2>
+        <h2>フォーマット</h2>
         <div class="toggles compact">
-          <label><input id="coverToggle" type="checkbox"> 封面</label>
-          <label><input id="tocToggle" type="checkbox"> 目录</label>
-          <label><input id="chapterBreakToggle" type="checkbox"> 章节分页</label>
+          <label><input id="coverToggle" type="checkbox"> 表紙</label>
+          <label><input id="tocToggle" type="checkbox"> 目次</label>
+          <label><input id="chapterBreakToggle" type="checkbox"> 章ごとに改ページ</label>
         </div>
         <label class="field">
-          <span>文档编号</span>
+          <span>ドキュメントコード</span>
           <input id="docCodeInput" type="text" placeholder="DOC-001">
         </label>
         <div class="margin-grid">
           <label class="field">
-            <span>版本</span>
+            <span>バージョン</span>
             <input id="versionInput" type="text" placeholder="v1.0">
           </label>
           <label class="field">
-            <span>作者/部门</span>
-            <input id="ownerInput" type="text" placeholder="平台组">
+            <span>作成者 / 部門</span>
+            <input id="ownerInput" type="text" placeholder="プラットフォームチーム">
           </label>
         </div>
         <label class="field">
-          <span>页面</span>
+          <span>用紙サイズ</span>
           <select id="pageSizeSelect">
             <option value="A4">A4</option>
             <option value="A3">A3</option>
@@ -82,14 +82,14 @@
           </label>
         </div>
         <div class="toggles compact">
-          <label><input id="headerToggle" type="checkbox"> 页眉</label>
+          <label><input id="headerToggle" type="checkbox"> ヘッダー</label>
         </div>
         <label class="field">
-          <span>页眉</span>
-          <input id="headerFormatInput" type="text" placeholder="内部文档" value="">
+          <span>ヘッダーテキスト</span>
+          <input id="headerFormatInput" type="text" placeholder="内部文書" value="">
         </label>
         <label class="field">
-          <span>页眉位置</span>
+          <span>位置</span>
           <select id="headerAlignSelect">
             <option value="left">left</option>
             <option value="center">center</option>
@@ -98,10 +98,10 @@
         </label>
 
         <div class="toggles compact">
-          <label><input id="pageNumberToggle" type="checkbox" checked> 页码</label>
+          <label><input id="pageNumberToggle" type="checkbox" checked> ページ番号</label>
         </div>
         <label class="field">
-          <span>页脚</span>
+          <span>フッターテキスト</span>
           <input id="footerFormatInput" type="text" value="{page} / {total}">
         </label>
         <label class="field">
@@ -115,19 +115,19 @@
       </section>
 
       <div class="actions">
-        <button id="previewBtn" type="button">预览</button>
-        <button id="convertBtn" type="button">导出 PDF</button>
+        <button id="previewBtn" type="button">プレビュー</button>
+        <button id="convertBtn" type="button">PDF出力</button>
       </div>
     </aside>
 
     <section class="panel editor">
       <header>
-        <button id="toggleSidebarBtn" class="toggle-sidebar-btn" type="button" title="收起/展开设置面板">⚙️ 设置</button>
-        <h2>Markdown 编辑器</h2>
-        <a id="downloadLink" class="download-link-btn" href="#" hidden>📥 下载 PDF</a>
+        <button id="toggleSidebarBtn" class="toggle-sidebar-btn" type="button" title="設定パネルを切り替える">⚙️ 設定</button>
+        <h2>Markdown エディタ</h2>
+        <a id="downloadLink" class="download-link-btn" href="#" hidden>📥 PDFダウンロード</a>
       </header>
       <div class="editor-body">
-        <textarea id="markdownEditor" placeholder="选择、拖入文件，或在此直接输入并编辑 Markdown 内容..."></textarea>
+        <textarea id="markdownEditor" placeholder="ファイルを選択・ドラッグ、またはここにMarkdownを直接入力・編集してください..."></textarea>
       </div>
     </section>
 

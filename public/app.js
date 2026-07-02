@@ -57,11 +57,11 @@ convertBtn.addEventListener("click", async () => {
 toggleSidebarBtn.addEventListener("click", () => {
   shell.classList.toggle("collapsed-sidebar");
   const isCollapsed = shell.classList.contains("collapsed-sidebar");
-  toggleSidebarBtn.textContent = isCollapsed ? "⚙️ 展开设置" : "⚙️ 收起设置";
+  toggleSidebarBtn.textContent = isCollapsed ? "⚙️ 設定を展開" : "⚙️ 設定を非表示";
 });
 
 async function uploadFile(file) {
-  setBusy("uploading");
+  setBusy("アップロード中...");
   downloadLink.hidden = true;
   downloadLink.removeAttribute("href");
   appendLog(`upload ${file.name}`);
@@ -88,7 +88,7 @@ async function uploadFile(file) {
 
 async function convert() {
   if (!fileId && !markdownEditor.value) return;
-  setBusy("queued");
+  setBusy("処理待ち...");
   downloadLink.hidden = true;
   const response = await fetchJson("/api/convert", {
     method: "POST",
@@ -112,7 +112,7 @@ async function pollJob() {
     previewFrame.src = job.pdf_url + "?inline=true&t=" + Date.now();
     
     if (shouldDownload) {
-      const filename = fileLabel.textContent !== "选择 Markdown" ? fileLabel.textContent.replace(/\.md$/i, ".pdf") : "document.pdf";
+      const filename = fileLabel.textContent !== "Markdownを選択" ? fileLabel.textContent.replace(/\.md$/i, ".pdf") : "document.pdf";
       triggerDownload(job.pdf_url, filename);
     }
     
@@ -143,7 +143,7 @@ function renderPayload() {
   return {
     file_id: fileId,
     markdown_content: markdownEditor.value,
-    filename: fileLabel.textContent !== "选择 Markdown" ? fileLabel.textContent : "document.md",
+    filename: fileLabel.textContent !== "Markdownを選択" ? fileLabel.textContent : "document.md",
     theme: themeSelect.value,
     render_mermaid: mermaidToggle.checked,
     strict_mermaid: strictToggle.checked,
@@ -219,7 +219,7 @@ function setBusy(text) {
 }
 
 function setReady() {
-  serverState.textContent = "ready";
+  serverState.textContent = "準備完了";
   previewBtn.disabled = !fileId;
   convertBtn.disabled = !fileId;
 }

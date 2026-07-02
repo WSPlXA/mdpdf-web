@@ -536,7 +536,7 @@ fn default_align() -> String {
 }
 
 fn default_footer_font_size() -> String {
-    "8px".to_string()
+    "11px".to_string()
 }
 
 fn default_footer_color() -> String {

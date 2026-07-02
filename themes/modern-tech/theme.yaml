@@ -26,7 +26,7 @@ pdf:
     text: "INTERNAL DESIGN DOCUMENT"
     page_numbers: false
     align: left
-    font_size: 8px
+    font_size: 11px
     color: "#718096"
     padding_left: 20mm
     padding_right: 20mm
@@ -35,7 +35,7 @@ pdf:
     page_numbers: true
     format: "Page {page} of {total}"
     align: right
-    font_size: 8px
+    font_size: 11px
     color: "#718096"
     padding_left: 20mm
     padding_right: 20mm

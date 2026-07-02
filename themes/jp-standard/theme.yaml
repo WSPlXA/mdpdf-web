@@ -28,7 +28,7 @@ pdf:
     page_numbers: true
     format: "{page} / {total}"
     align: right
-    font_size: 8px
+    font_size: 11px
     color: "#666"
     padding_left: 18mm
     padding_right: 18mm

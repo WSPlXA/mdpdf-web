@@ -36,6 +36,90 @@ let fileId = null;
 let currentJob = null;
 let shouldDownload = false;
 
+// Default Japanese Cover Page template
+const defaultMarkdown = `# ＜ドキュメント名称＞
+
+## 表紙
+
+日本郵便株式会社
+【郵便物等事故申告処理システム】
+**＜ドキュメント名称＞**
+
+第1.0版
+
+- 初版 ： 2026年07月31日
+- 改版 ：　　　　年　　月　　日
+
+---
+
+## 改版履歴
+
+| 項目             | 内容                         |
+| ---------------- | ---------------------------- |
+| システム名       | 郵便物等事故申告処理システム |
+| ID               | ＜BIPROGYドキュメントID＞    |
+| ドキュメント名称 | ＜ドキュメント名称＞         |
+
+### 更新情報
+
+| 項目   | 内容       |
+| ------ | ---------- |
+| 作成者 | BIPROGY    |
+| 作成日 | 2026/07/31 |
+| 更新者 |            |
+| 更新日 |            |
+
+### 改版履歴
+
+| 版数  | 改版内容 | 更新者  | 更新日     |
+| ----- | -------- | ------- | ---------- |
+| 01.00 | 初版     | BIPROGY | 2026/07/31 |`;
+
+const templateHeader = "## 表紙";
+
+// Automatically updates the cover page checkbox state based on editor content
+function updateCoverToggleState() {
+  const currentVal = markdownEditor.value;
+  coverToggle.checked = currentVal.includes(templateHeader);
+}
+
+function insertCoverTemplate() {
+  const currentVal = markdownEditor.value;
+  if (!currentVal.includes(templateHeader)) {
+    // Determine the document name to dynamically customize template placeholders
+    let docName = fileLabel.textContent || "ドキュメント名称";
+    if (docName === "Markdownを選択") {
+      docName = "ドキュメント名称";
+    } else {
+      docName = docName.replace(/\.(md|markdown)$/i, "");
+    }
+    
+    // Replace the placeholders with actual document name
+    const customizedTemplate = defaultMarkdown.replaceAll("＜ドキュメント名称＞", docName);
+    markdownEditor.value = customizedTemplate + "\n\n---\n\n" + currentVal;
+  }
+}
+
+function removeCoverTemplate() {
+  const currentVal = markdownEditor.value;
+  if (currentVal.includes(templateHeader)) {
+    const parts = currentVal.split(/\n---\n/);
+    if (parts.length > 2) {
+      // Remove both the Cover page and the Revision History page
+      parts.shift();
+      parts.shift();
+      markdownEditor.value = parts.join("\n---\n").trimStart();
+    } else if (parts.length > 1) {
+      parts.shift();
+      markdownEditor.value = parts.join("\n---\n").trimStart();
+    } else {
+      if (currentVal.startsWith(defaultMarkdown)) {
+        markdownEditor.value = currentVal.substring(defaultMarkdown.length).trimStart();
+      }
+    }
+  }
+}
+
 // Setup functions
 function setBusy(text) {
   serverState.textContent = text;
@@ -128,19 +212,21 @@ toggleSidebarBtn.addEventListener("click", () => {
   toggleSidebarBtn.textContent = isCollapsed ? "⚙️ 設定を展開" : "⚙️ 設定を非表示";
 });
 
-// Register draft saving and automatic compilation listeners
+// Register draft saving, automatic compilation, and state synchronization listeners
 markdownEditor.addEventListener("input", () => {
+  updateCoverToggleState();
   debouncedSaveDraft();
   debouncedConvert();
 });
 
 const configElements = [
-  themeSelect, mermaidToggle, strictToggle, coverToggle, tocToggle,
+  themeSelect, mermaidToggle, strictToggle, tocToggle,
   chapterBreakToggle, docCodeInput, versionInput, ownerInput, pageSizeSelect,
   marginTopInput, marginRightInput, marginBottomInput, marginLeftInput, pageNumberToggle,
   footerFormatInput, footerAlignSelect, headerToggle, headerFormatInput, headerAlignSelect
 ];
 
+// Config elements change listeners (excluding coverToggle)
 configElements.forEach(elem => {
   if (elem) {
     if (elem.type === "checkbox" || elem.tagName === "SELECT") {
@@ -156,6 +242,18 @@ configElements.forEach(elem => {
       });
     }
   }
+});
+
+// Separate listener for coverToggle to handle template injection
+coverToggle.addEventListener("change", async () => {
+  if (coverToggle.checked) {
+    insertCoverTemplate();
+  } else {
+    removeCoverTemplate();
+  }
+  saveDraft();
+  shouldDownload = false;
+  await convert();
 });
 
 // Register paste event for clipboard images
@@ -270,6 +368,9 @@ async function loadDraft() {
     headerFormatInput.value = draft.header_format || "";
     headerAlignSelect.value = draft.header_align || "left";
     
+    // Synchronize cover checkbox state with loaded editor content
+    updateCoverToggleState();
+    
     // Enable/disable actions
     if (fileId || markdownEditor.value) {
       previewBtn.disabled = false;
@@ -294,6 +395,9 @@ async function uploadFile(file) {
   const reader = new FileReader();
   reader.onload = async (e) => {
     markdownEditor.value = e.target.result;
+    
+    // Sync checkbox state for the uploaded file
+    updateCoverToggleState();
     
     // Automatically preview (compile PDF and show in right panel)
     shouldDownload = false;

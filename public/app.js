@@ -10,6 +10,7 @@ const chapterBreakToggle = document.querySelector("#chapterBreakToggle");
 const docCodeInput = document.querySelector("#docCodeInput");
 const versionInput = document.querySelector("#versionInput");
 const ownerInput = document.querySelector("#ownerInput");
+const applyToCoverBtn = document.querySelector("#applyToCoverBtn");
 const pageSizeSelect = document.querySelector("#pageSizeSelect");
 const marginTopInput = document.querySelector("#marginTopInput");
 const marginRightInput = document.querySelector("#marginRightInput");
@@ -103,6 +104,7 @@ function insertCoverTemplate() {
 function removeCoverTemplate() {
   const currentVal = markdownEditor.value;
   if (currentVal.includes(templateHeader)) {
+    // Split by the first page break ---
     const parts = currentVal.split(/\n---\n/);
     if (parts.length > 2) {
       // Remove both the Cover page and the Revision History page
@@ -118,6 +120,51 @@ function removeCoverTemplate() {
       }
     }
   }
+}
+
+// Write control panel input fields into the Cover Page template inside editor
+function applyFieldsToCover() {
+  let markdown = markdownEditor.value;
+  if (!markdown.includes(templateHeader)) {
+    // If cover is not present, insert it first!
+    insertCoverTemplate();
+    markdown = markdownEditor.value;
+  }
+
+  const docCode = docCodeInput.value.trim() || "＜BIPROGYドキュメントID＞";
+  const version = versionInput.value.trim() || "1.0";
+  const owner = ownerInput.value.trim() || "BIPROGY";
+
+  // Split markdown into lines and perform targeted replacements
+  const lines = markdown.split("\n");
+  const updatedLines = lines.map(line => {
+    // 1. Version line (e.g. 第1.0版)
+    if (/^第[0-9a-zA-Z\.-]+版$/.test(line.trim())) {
+      return `第${version}版`;
+    }
+    
+    // 2. ID row in table
+    if (line.includes("| ID ")) {
+      return line.replace(/(\| ID\s*\|\s*)[^|]+(\s*\|)/, `$1${docCode}$2`);
+    }
+    
+    // 3. Creator row in table
+    if (line.includes("| 作成者 ")) {
+      return line.replace(/(\| 作成者\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
+    }
+    
+    // 4. Initial revision row in table (e.g. | 01.00 | 初版 | BIPROGY | 2026/07/31 |)
+    if (line.includes("初版") && line.includes("2026/07/31")) {
+      let temp = line.replace(/(\| )[0-9.]+(\s*\|\s*初版\s*\|)/, `$1${version}$2`);
+      temp = temp.replace(/(\| 初版\s*\|\s*)[^|]+(\s*\|\s*2026\/07\/31\s*\|)/, `$1${owner}$2`);
+      return temp;
+    }
+    
+    return line;
+  });
+
+  markdownEditor.value = updatedLines.join("\n");
+  updateCoverToggleState();
 }
 
 // Setup functions
@@ -251,6 +298,14 @@ coverToggle.addEventListener("change", async () => {
   } else {
     removeCoverTemplate();
   }
+  saveDraft();
+  shouldDownload = false;
+  await convert();
+});
+
+// One-click write sidebar fields into cover page template in the editor
+applyToCoverBtn.addEventListener("click", async () => {
+  applyFieldsToCover();
   saveDraft();
   shouldDownload = false;
   await convert();

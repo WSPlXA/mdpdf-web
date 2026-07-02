@@ -24,8 +24,7 @@
       <label class="field">
         <span>テンプレート</span>
         <select id="themeSelect">
-          <option value="jp-standard">jp-standard</option>
-          <option value="modern-tech">modern-tech</option>
+          <option value="modern-tech" selected>modern-tech</option>
         </select>
       </label>
 
@@ -42,9 +41,19 @@
           <label><input id="chapterBreakToggle" type="checkbox"> 章ごとに改ページ</label>
         </div>
         <label class="field">
-          <span>ドキュメントコード</span>
-          <input id="docCodeInput" type="text" placeholder="DOC-001">
+          <span>ドキュメント名称</span>
+          <input id="docNameInput" type="text" placeholder="設計書">
         </label>
+        <div class="margin-grid">
+          <label class="field">
+            <span>ドキュメントコード</span>
+            <input id="docCodeInput" type="text" placeholder="DOC-001">
+          </label>
+          <label class="field">
+            <span>作成日 (YYYY/MM/DD)</span>
+            <input id="docDateInput" type="text" placeholder="2026/07/31">
+          </label>
+        </div>
         <div class="margin-grid">
           <label class="field">
             <span>バージョン</span>

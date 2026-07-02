@@ -7,7 +7,9 @@ const strictToggle = document.querySelector("#strictToggle");
 const coverToggle = document.querySelector("#coverToggle");
 const tocToggle = document.querySelector("#tocToggle");
 const chapterBreakToggle = document.querySelector("#chapterBreakToggle");
+const docNameInput = document.querySelector("#docNameInput");
 const docCodeInput = document.querySelector("#docCodeInput");
+const docDateInput = document.querySelector("#docDateInput");
 const versionInput = document.querySelector("#versionInput");
 const ownerInput = document.querySelector("#ownerInput");
 const applyToCoverBtn = document.querySelector("#applyToCoverBtn");
@@ -36,6 +38,15 @@ const shell = document.querySelector(".shell");
 let fileId = null;
 let currentJob = null;
 let shouldDownload = false;
+
+// Default date formatting helper (YYYY/MM/DD)
+function getTodayString() {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  return `${yyyy}/${mm}/${dd}`;
+}
 
 // Default Japanese Cover Page template
 const defaultMarkdown = `# ＜ドキュメント名称＞
@@ -88,7 +99,7 @@ function insertCoverTemplate() {
   const currentVal = markdownEditor.value;
   if (!currentVal.includes(templateHeader)) {
     // Determine the document name to dynamically customize template placeholders
-    let docName = fileLabel.textContent || "ドキュメント名称";
+    let docName = docNameInput.value.trim() || fileLabel.textContent || "ドキュメント名称";
     if (docName === "Markdownを選択") {
       docName = "ドキュメント名称";
     } else {
@@ -131,32 +142,67 @@ function applyFieldsToCover() {
     markdown = markdownEditor.value;
   }
 
+  const docName = docNameInput.value.trim() || "ドキュメント名称";
   const docCode = docCodeInput.value.trim() || "＜BIPROGYドキュメントID＞";
+  const docDate = docDateInput.value.trim() || getTodayString();
   const version = versionInput.value.trim() || "1.0";
   const owner = ownerInput.value.trim() || "BIPROGY";
+
+  // Convert date (e.g. 2026/07/31) to Japanese format (e.g. 2026年07月31日)
+  const dateParts = docDate.split("/");
+  let jaDate = docDate;
+  if (dateParts.length === 3) {
+    jaDate = `${dateParts[0]}年${dateParts[1]}月${dateParts[2]}日`;
+  }
 
   // Split markdown into lines and perform targeted replacements
   const lines = markdown.split("\n");
   const updatedLines = lines.map(line => {
-    // 1. Version line (e.g. 第1.0版)
+    // 1. First title line
+    if (line.trim().startsWith("# ") && !line.trim().startsWith("##")) {
+      return `# ${docName}`;
+    }
+    
+    // 2. Bold subtitle line
+    if (line.trim().startsWith("**") && line.trim().endsWith("**")) {
+      return `**${docName}**`;
+    }
+    
+    // 3. Version line (e.g. 第1.0版)
     if (/^第[0-9a-zA-Z\.-]+版$/.test(line.trim())) {
       return `第${version}版`;
     }
     
-    // 2. ID row in table
+    // 4. Cover list date line (初版 ： 2026年07月31日)
+    if (line.includes("初版") && line.includes("：") && line.includes("年")) {
+      return line.replace(/(-\s*初版\s*：\s*).*/, `$1${jaDate}`);
+    }
+    
+    // 5. Document name row in table
+    if (line.includes("| ドキュメント名称 ")) {
+      return line.replace(/(\| ドキュメント名称\s*\|\s*)[^|]+(\s*\|)/, `$1${docName}$2`);
+    }
+    
+    // 6. ID row in table
     if (line.includes("| ID ")) {
       return line.replace(/(\| ID\s*\|\s*)[^|]+(\s*\|)/, `$1${docCode}$2`);
     }
     
-    // 3. Creator row in table
+    // 7. Creator row in table
     if (line.includes("| 作成者 ")) {
       return line.replace(/(\| 作成者\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
     }
     
-    // 4. Initial revision row in table (e.g. | 01.00 | 初版 | BIPROGY | 2026/07/31 |)
-    if (line.includes("初版") && line.includes("2026/07/31")) {
+    // 8. Creation date row in table
+    if (line.includes("| 作成日 ")) {
+      return line.replace(/(\| 作成日\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
+    }
+    
+    // 9. Initial revision row in table (e.g. | 01.00 | 初版 | BIPROGY | 2026/07/31 |)
+    if (line.includes("初版") && line.startsWith("|")) {
       let temp = line.replace(/(\| )[0-9.]+(\s*\|\s*初版\s*\|)/, `$1${version}$2`);
-      temp = temp.replace(/(\| 初版\s*\|\s*)[^|]+(\s*\|\s*2026\/07\/31\s*\|)/, `$1${owner}$2`);
+      temp = temp.replace(/(\| 初版\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
+      temp = temp.replace(/(\| 初版\s*\|\s*[^|]+\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
       return temp;
     }
     
@@ -200,7 +246,9 @@ function saveDraft() {
     cover_enabled: coverToggle.checked,
     toc_enabled: tocToggle.checked,
     chapter_page_break: chapterBreakToggle.checked,
+    doc_name: docNameInput.value,
     doc_code: docCodeInput.value,
+    doc_date: docDateInput.value,
     version: versionInput.value,
     owner: ownerInput.value,
     page_size: pageSizeSelect.value,
@@ -268,7 +316,7 @@ markdownEditor.addEventListener("input", () => {
 
 const configElements = [
   themeSelect, mermaidToggle, strictToggle, tocToggle,
-  chapterBreakToggle, docCodeInput, versionInput, ownerInput, pageSizeSelect,
+  chapterBreakToggle, docNameInput, docCodeInput, docDateInput, versionInput, ownerInput, pageSizeSelect,
   marginTopInput, marginRightInput, marginBottomInput, marginLeftInput, pageNumberToggle,
   footerFormatInput, footerAlignSelect, headerToggle, headerFormatInput, headerAlignSelect
 ];
@@ -389,7 +437,11 @@ function insertTextAtCursor(textarea, text) {
 
 async function loadDraft() {
   const draftStr = localStorage.getItem("mdpdf_draft");
-  if (!draftStr) return;
+  const defaultDate = getTodayString();
+  if (!draftStr) {
+    docDateInput.value = defaultDate;
+    return;
+  }
   try {
     const draft = JSON.parse(draftStr);
     
@@ -402,13 +454,15 @@ async function loadDraft() {
     markdownEditor.value = draft.markdown_content || "";
     
     // Restore options
-    themeSelect.value = draft.theme || "jp-standard";
+    themeSelect.value = draft.theme || "modern-tech";
     mermaidToggle.checked = draft.render_mermaid !== false;
     strictToggle.checked = !!draft.strict_mermaid;
     coverToggle.checked = !!draft.cover_enabled;
     tocToggle.checked = !!draft.toc_enabled;
     chapterBreakToggle.checked = !!draft.chapter_page_break;
+    docNameInput.value = draft.doc_name || "";
     docCodeInput.value = draft.doc_code || "";
+    docDateInput.value = draft.doc_date || defaultDate;
     versionInput.value = draft.version || "";
     ownerInput.value = draft.owner || "";
     pageSizeSelect.value = draft.page_size || "A4";
@@ -445,6 +499,11 @@ async function uploadFile(file) {
   downloadLink.hidden = true;
   downloadLink.removeAttribute("href");
   appendLog(`upload ${file.name}`);
+
+  // Auto-extract filename as document name
+  const nameWithoutExt = file.name.replace(/\.(md|markdown)$/i, "");
+  docNameInput.value = nameWithoutExt;
+  docDateInput.value = getTodayString();
 
   // Read file contents as text and load into editor
   const reader = new FileReader();
@@ -541,7 +600,9 @@ function formatPayload() {
     cover_enabled: coverToggle.checked,
     toc_enabled: tocToggle.checked,
     chapter_page_break: chapterBreakToggle.checked,
+    doc_name: cleanValue(docNameInput.value),
     doc_code: cleanValue(docCodeInput.value),
+    doc_date: cleanValue(docDateInput.value),
     version: cleanValue(versionInput.value),
     owner: cleanValue(ownerInput.value),
     page_size: cleanValue(pageSizeSelect.value),

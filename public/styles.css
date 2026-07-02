@@ -97,6 +97,13 @@ body {
   color: #f8fafc;
   white-space: pre-wrap;
   word-break: break-all;
+  transition: background 0.2s ease;
+}
+
+.editor-body textarea.drag-over {
+  background: rgba(14, 165, 233, 0.1) !important;
+  outline: 2px dashed var(--accent) !important;
+  outline-offset: -4px;
 }
 
 .toggle-sidebar-btn {

@@ -29,15 +29,83 @@ const downloadLink = document.querySelector("#downloadLink");
 
 const markdownEditor = document.querySelector("#markdownEditor");
 const toggleSidebarBtn = document.querySelector("#toggleSidebarBtn");
+const savedIndicator = document.querySelector("#savedIndicator");
 const shell = document.querySelector(".shell");
 
 let fileId = null;
 let currentJob = null;
 let shouldDownload = false;
 
+// Setup functions
+function setBusy(text) {
+  serverState.textContent = text;
+  previewBtn.disabled = true;
+  convertBtn.disabled = true;
+}
+
+function setReady() {
+  serverState.textContent = "準備完了";
+  previewBtn.disabled = !fileId && !markdownEditor.value;
+  convertBtn.disabled = !fileId && !markdownEditor.value;
+}
+
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+function saveDraft() {
+  const draft = {
+    file_id: fileId,
+    filename: fileLabel.textContent,
+    file_meta: fileMeta.textContent,
+    markdown_content: markdownEditor.value,
+    theme: themeSelect.value,
+    render_mermaid: mermaidToggle.checked,
+    strict_mermaid: strictToggle.checked,
+    cover_enabled: coverToggle.checked,
+    toc_enabled: tocToggle.checked,
+    chapter_page_break: chapterBreakToggle.checked,
+    doc_code: docCodeInput.value,
+    version: versionInput.value,
+    owner: ownerInput.value,
+    page_size: pageSizeSelect.value,
+    margin_top: marginTopInput.value,
+    margin_right: marginRightInput.value,
+    margin_bottom: marginBottomInput.value,
+    margin_left: marginLeftInput.value,
+    page_numbers: pageNumberToggle.checked,
+    footer_format: footerFormatInput.value,
+    footer_align: footerAlignSelect.value,
+    header_enabled: headerToggle.checked,
+    header_format: headerFormatInput.value,
+    header_align: headerAlignSelect.value,
+  };
+  localStorage.setItem("mdpdf_draft", JSON.stringify(draft));
+  
+  // Show saved indicator
+  savedIndicator.style.opacity = "1";
+  if (window.savedIndicatorTimeout) {
+    clearTimeout(window.savedIndicatorTimeout);
+  }
+  window.savedIndicatorTimeout = setTimeout(() => {
+    savedIndicator.style.opacity = "0";
+  }, 1500);
+}
+
+const debouncedSaveDraft = debounce(saveDraft, 500);
+const debouncedConvert = debounce(async () => {
+  shouldDownload = false;
+  await convert();
+}, 1000);
+
 previewBtn.disabled = true;
 convertBtn.disabled = true;
 
+// Register event listeners
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0];
   if (!file) return;
@@ -60,6 +128,162 @@ toggleSidebarBtn.addEventListener("click", () => {
   toggleSidebarBtn.textContent = isCollapsed ? "⚙️ 設定を展開" : "⚙️ 設定を非表示";
 });
 
+// Register draft saving and automatic compilation listeners
+markdownEditor.addEventListener("input", () => {
+  debouncedSaveDraft();
+  debouncedConvert();
+});
+
+const configElements = [
+  themeSelect, mermaidToggle, strictToggle, coverToggle, tocToggle,
+  chapterBreakToggle, docCodeInput, versionInput, ownerInput, pageSizeSelect,
+  marginTopInput, marginRightInput, marginBottomInput, marginLeftInput, pageNumberToggle,
+  footerFormatInput, footerAlignSelect, headerToggle, headerFormatInput, headerAlignSelect
+];
+
+configElements.forEach(elem => {
+  if (elem) {
+    if (elem.type === "checkbox" || elem.tagName === "SELECT") {
+      elem.addEventListener("change", async () => {
+        saveDraft();
+        shouldDownload = false;
+        await convert();
+      });
+    } else {
+      elem.addEventListener("input", () => {
+        debouncedSaveDraft();
+        debouncedConvert();
+      });
+    }
+  }
+});
+
+// Register paste event for clipboard images
+markdownEditor.addEventListener("paste", async (e) => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      e.preventDefault(); // Stop normal text pasting
+      const file = item.getAsFile();
+      if (!file) continue;
+      
+      setBusy("画像を処理中...");
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64Url = event.target.result;
+        const markdownImage = `\n![image](${base64Url})\n`;
+        insertTextAtCursor(markdownEditor, markdownImage);
+        saveDraft();
+        await convert();
+      };
+      reader.readAsDataURL(file);
+      break;
+    }
+  }
+});
+
+// Register drag and drop events for editor textarea
+markdownEditor.addEventListener("dragenter", (e) => {
+  e.preventDefault();
+  markdownEditor.classList.add("drag-over");
+});
+
+markdownEditor.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  markdownEditor.classList.add("drag-over");
+});
+
+markdownEditor.addEventListener("dragleave", (e) => {
+  e.preventDefault();
+  markdownEditor.classList.remove("drag-over");
+});
+
+markdownEditor.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  markdownEditor.classList.remove("drag-over");
+  
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  
+  const file = files[0];
+  
+  if (file.type.startsWith("image/")) {
+    setBusy("画像を処理中...");
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64Url = event.target.result;
+      const markdownImage = `\n![image](${base64Url})\n`;
+      insertTextAtCursor(markdownEditor, markdownImage);
+      saveDraft();
+      await convert();
+    };
+    reader.readAsDataURL(file);
+  } else if (file.name.endsWith(".md") || file.name.endsWith(".markdown")) {
+    await uploadFile(file);
+  }
+});
+
+function insertTextAtCursor(textarea, text) {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const val = textarea.value;
+  textarea.value = val.substring(0, start) + text + val.substring(end);
+  textarea.selectionStart = textarea.selectionEnd = start + text.length;
+  textarea.focus();
+}
+
+async function loadDraft() {
+  const draftStr = localStorage.getItem("mdpdf_draft");
+  if (!draftStr) return;
+  try {
+    const draft = JSON.parse(draftStr);
+    
+    // Restore file info
+    fileId = draft.file_id || null;
+    fileLabel.textContent = draft.filename || "Markdownを選択";
+    fileMeta.textContent = draft.file_meta || ".md / .markdown、最大 10 MiB";
+    
+    // Restore editor content
+    markdownEditor.value = draft.markdown_content || "";
+    
+    // Restore options
+    themeSelect.value = draft.theme || "jp-standard";
+    mermaidToggle.checked = draft.render_mermaid !== false;
+    strictToggle.checked = !!draft.strict_mermaid;
+    coverToggle.checked = !!draft.cover_enabled;
+    tocToggle.checked = !!draft.toc_enabled;
+    chapterBreakToggle.checked = !!draft.chapter_page_break;
+    docCodeInput.value = draft.doc_code || "";
+    versionInput.value = draft.version || "";
+    ownerInput.value = draft.owner || "";
+    pageSizeSelect.value = draft.page_size || "A4";
+    marginTopInput.value = draft.margin_top || "20mm";
+    marginRightInput.value = draft.margin_right || "18mm";
+    marginBottomInput.value = draft.margin_bottom || "18mm";
+    marginLeftInput.value = draft.margin_left || "18mm";
+    pageNumberToggle.checked = draft.page_numbers !== false;
+    footerFormatInput.value = draft.footer_format || "{page} / {total}";
+    footerAlignSelect.value = draft.footer_align || "right";
+    headerToggle.checked = !!draft.header_enabled;
+    headerFormatInput.value = draft.header_format || "";
+    headerAlignSelect.value = draft.header_align || "left";
+    
+    // Enable/disable actions
+    if (fileId || markdownEditor.value) {
+      previewBtn.disabled = false;
+      convertBtn.disabled = false;
+      
+      // Auto trigger preview to render PDF on load
+      shouldDownload = false;
+      await convert();
+    }
+  } catch (e) {
+    console.error("Failed to load draft:", e);
+  }
+}
+
 async function uploadFile(file) {
   setBusy("アップロード中...");
   downloadLink.hidden = true;
@@ -74,6 +298,7 @@ async function uploadFile(file) {
     // Automatically preview (compile PDF and show in right panel)
     shouldDownload = false;
     await convert();
+    saveDraft();
   };
   reader.readAsText(file);
 
@@ -83,6 +308,7 @@ async function uploadFile(file) {
   fileId = response.file_id;
   fileLabel.textContent = response.filename;
   fileMeta.textContent = `${Math.round(response.size / 1024)} KiB`;
+  saveDraft();
   setReady();
 }
 
@@ -212,14 +438,5 @@ function appendLog(text, error = false) {
   }
 }
 
-function setBusy(text) {
-  serverState.textContent = text;
-  previewBtn.disabled = true;
-  convertBtn.disabled = true;
-}
-
-function setReady() {
-  serverState.textContent = "準備完了";
-  previewBtn.disabled = !fileId;
-  convertBtn.disabled = !fileId;
-}
+// Initial call to load saved draft on page load
+loadDraft();

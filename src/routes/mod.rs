@@ -204,6 +204,9 @@ pub async fn download(
         [
             (header::CONTENT_TYPE, "application/pdf".to_string()),
             (header::CONTENT_DISPOSITION, disposition),
+            (header::CACHE_CONTROL, "no-store, no-cache, must-revalidate, proxy-revalidate".to_string()),
+            (header::PRAGMA, "no-cache".to_string()),
+            (header::EXPIRES, "0".to_string()),
         ],
         Body::from(bytes),
     )

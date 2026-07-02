@@ -287,6 +287,16 @@ iframe {
   background: #f7f8f9;
 }
 
+.saved-indicator {
+  font-size: 11px;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
 @media (max-width: 980px) {
   .shell {
     grid-template-columns: 1fr;

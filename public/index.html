@@ -122,8 +122,11 @@
 
     <section class="panel editor">
       <header>
-        <button id="toggleSidebarBtn" class="toggle-sidebar-btn" type="button" title="設定パネルを切り替える">⚙️ 設定</button>
-        <h2>Markdown エディタ</h2>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="toggleSidebarBtn" class="toggle-sidebar-btn" type="button" title="設定パネルを切り替える">⚙️ 設定</button>
+          <h2>Markdown エディタ</h2>
+          <span id="savedIndicator" class="saved-indicator" style="opacity: 0; transition: opacity 0.3s ease;">✓ 保存済み</span>
+        </div>
         <a id="downloadLink" class="download-link-btn" href="#" hidden>📥 PDFダウンロード</a>
       </header>
       <div class="editor-body">

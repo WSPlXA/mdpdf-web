@@ -23,7 +23,7 @@ pdf:
     left: 0
   header:
     enabled: true
-    text: "INTERNAL DESIGN DOCUMENT"
+    text: ""
     page_numbers: false
     align: left
     font_size: 11px

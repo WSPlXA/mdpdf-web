@@ -81,7 +81,7 @@ fn decorate_body(
 }
 
 fn render_cover(title: &str, theme: &str, options: &DocumentOptions) -> String {
-    let mut rows = Vec::with_capacity(4);
+    let mut rows = Vec::with_capacity(3);
     if !options.doc_code.is_empty() {
         rows.push(("文档编号", options.doc_code.as_str()));
     }
@@ -91,12 +91,10 @@ fn render_cover(title: &str, theme: &str, options: &DocumentOptions) -> String {
     if !options.owner.is_empty() {
         rows.push(("作者/部门", options.owner.as_str()));
     }
-    rows.push(("模板", theme));
 
     let mut html = String::with_capacity(1024);
     html.push_str("<section class=\"doc-cover\">");
     html.push_str("<div class=\"doc-cover-main\">");
-    html.push_str("<p class=\"doc-cover-kicker\">Internal Document</p>");
     html.push_str("<h1>");
     html.push_str(&encode_text(title));
     html.push_str("</h1>");

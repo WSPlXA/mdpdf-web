@@ -454,7 +454,9 @@ async function loadDraft() {
     markdownEditor.value = draft.markdown_content || "";
     
     // Restore options
-    themeSelect.value = draft.theme || "modern-tech";
+    const loadedTheme = draft.theme || "modern-tech";
+    const hasThemeOption = Array.from(themeSelect.options).some(o => o.value === loadedTheme);
+    themeSelect.value = hasThemeOption ? loadedTheme : (themeSelect.options[0]?.value || "modern-tech");
     mermaidToggle.checked = draft.render_mermaid !== false;
     strictToggle.checked = !!draft.strict_mermaid;
     coverToggle.checked = !!draft.cover_enabled;

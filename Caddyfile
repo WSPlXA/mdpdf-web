@@ -1,0 +1,12 @@
+idpsienne.uk, www.idpsienne.uk {
+    # Compress responses
+    encode gzip zstd
+
+    # Set file upload limit to 50MB
+    request_body {
+        max_size 50MB
+    }
+
+    # Reverse proxy to Axum web service container named "app" on internal port 8080
+    reverse_proxy app:8080
+}

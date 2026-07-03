@@ -1,8 +1,6 @@
 services:
-  mdpdf-web:
+  app:
     build: .
-    ports:
-      - "8080:8080"
     volumes:
       - mdpdf-workdir:/app/workdir
     environment:
@@ -12,6 +10,22 @@ services:
       MDPDF_CHROMIUM: chromium
       MDPDF_PRINT_SCRIPT: /app/scripts/print_pdf.mjs
       MDPDF_PUPPETEER_CONFIG: /app/puppeteer-config.json
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
 
 volumes:
   mdpdf-workdir:
+  caddy-data:
+  caddy-config:

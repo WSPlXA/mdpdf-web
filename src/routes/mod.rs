@@ -125,6 +125,7 @@ pub async fn convert(
     let job = ConvertJob {
         id: job_id.clone(),
         file_id,
+        filename: filename.clone(),
         theme: req.theme.clone(),
         status: JobStatus::Pending,
         pdf_url: None,
@@ -191,7 +192,8 @@ pub async fn download(
         return Err(AppError::BadRequest("invalid PDF path".into()));
     }
     let bytes = tokio::fs::read(path).await?;
-    let filename = format!("{job_id}.pdf");
+    let stem = job.filename.trim_end_matches(".md").trim_end_matches(".markdown");
+    let filename = format!("{stem}.pdf");
     
     let disposition = if query.inline {
         format!("inline; filename=\"{filename}\"")
@@ -232,6 +234,15 @@ async fn run_convert_job(
 ) {
     set_job_processing(&state, &job_id).await;
 
+    // Limit concurrent PDF conversions (Chromium is resource heavy)
+    let _permit = match state.convert_limiter.acquire().await {
+        Ok(p) => p,
+        Err(_) => {
+            set_job_failed(&state, &job_id, "rate limit: conversion queue full".into()).await;
+            return;
+        }
+    };
+
     let job_dir = state.job_dir(&job_id);
     let result = async {
         tokio::fs::create_dir_all(&job_dir).await?;
@@ -270,6 +281,13 @@ async fn set_job_processing(state: &AppState, job_id: &str) {
     if let Some(job) = state.jobs.write().await.get_mut(job_id) {
         job.status = JobStatus::Processing;
         job.logs.push("processing".into());
+    }
+}
+
+async fn set_job_failed(state: &AppState, job_id: &str, msg: String) {
+    if let Some(job) = state.jobs.write().await.get_mut(job_id) {
+        job.status = JobStatus::Failed;
+        job.error_message = Some(msg);
     }
 }
 

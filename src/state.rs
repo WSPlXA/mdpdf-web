@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 
 use crate::model::{ConvertJob, UploadedFile};
 
@@ -15,6 +15,7 @@ pub struct AppState {
     pub themes_dir: PathBuf,
     pub files: Arc<RwLock<HashMap<String, UploadedFile>>>,
     pub jobs: Arc<RwLock<HashMap<String, ConvertJob>>>,
+    pub convert_limiter: Arc<Semaphore>,
 }
 
 impl AppState {
@@ -29,6 +30,7 @@ impl AppState {
             themes_dir,
             files: Arc::new(RwLock::new(HashMap::new())),
             jobs: Arc::new(RwLock::new(HashMap::new())),
+            convert_limiter: Arc::new(Semaphore::new(3)),
         })
     }
 

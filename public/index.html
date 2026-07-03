@@ -146,7 +146,14 @@
     </section>
 
     <section class="panel preview">
-      <iframe id="previewFrame" title="preview"></iframe>
+      <div class="preview-tabs">
+        <button type="button" class="preview-tab active" data-tab="md">MD プレビュー</button>
+        <button type="button" class="preview-tab" data-tab="pdf">PDF プレビュー</button>
+      </div>
+      <div class="preview-body">
+        <iframe id="mdPreviewFrame" class="preview-frame" title="MD preview" sandbox="allow-scripts"></iframe>
+        <iframe id="pdfPreviewFrame" class="preview-frame" title="PDF preview" hidden></iframe>
+      </div>
     </section>
   </main>
   <script src="/prism.min.js"></script>

@@ -26,6 +26,7 @@ pub enum JobStatus {
 pub struct ConvertJob {
     pub id: String,
     pub file_id: String,
+    pub filename: String,
     pub theme: String,
     pub status: JobStatus,
     pub pdf_url: Option<String>,

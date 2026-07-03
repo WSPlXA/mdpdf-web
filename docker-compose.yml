@@ -3,6 +3,7 @@ services:
     build: .
     volumes:
       - mdpdf-workdir:/app/workdir
+      - ./public:/app/public
     environment:
       MDPDF_BIND: 0.0.0.0:8080
       MDPDF_WORKDIR: /app/workdir

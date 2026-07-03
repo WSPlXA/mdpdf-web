@@ -89,7 +89,7 @@ fn render_cover(title: &str, theme: &str, options: &DocumentOptions) -> String {
         rows.push(("版本", options.version.as_str()));
     }
     if !options.owner.is_empty() {
-        rows.push(("作者/部门", options.owner.as_str()));
+        rows.push(("作成者 / 部門", options.owner.as_str()));
     }
 
     let mut html = String::with_capacity(1024);

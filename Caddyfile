@@ -1,12 +1,45 @@
-idpsienne.uk, www.idpsienne.uk {
-    # Compress responses
+{
+    # Disable automatic HTTP->HTTPS redirect to prevent loop
+    # when behind Cloudflare proxy.
+    auto_https disable_redirects
+}
+
+# Explicit HTTP listener (serves content, no redirect)
+http://idpsienne.uk, http://www.idpsienne.uk {
     encode gzip zstd
 
-    # Set file upload limit to 50MB
     request_body {
         max_size 50MB
     }
 
-    # Reverse proxy to Axum web service container named "app" on internal port 8080
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+        Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'self'; connect-src 'self'"
+    }
+
+    reverse_proxy app:8080
+}
+
+# HTTPS listener with TLS
+idpsienne.uk, www.idpsienne.uk {
+    encode gzip zstd
+
+    request_body {
+        max_size 50MB
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+        Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'self'; connect-src 'self'"
+    }
+
     reverse_proxy app:8080
 }

@@ -26,7 +26,8 @@ const headerFormatInput = document.querySelector("#headerFormatInput");
 const headerAlignSelect = document.querySelector("#headerAlignSelect");
 const previewBtn = document.querySelector("#previewBtn");
 const convertBtn = document.querySelector("#convertBtn");
-const previewFrame = document.querySelector("#previewFrame");
+const mdPreviewFrame = document.querySelector("#mdPreviewFrame");
+const pdfPreviewFrame = document.querySelector("#pdfPreviewFrame");
 const serverState = document.querySelector("#serverState");
 const downloadLink = document.querySelector("#downloadLink");
 
@@ -38,6 +39,7 @@ const shell = document.querySelector(".shell");
 let fileId = null;
 let currentJob = null;
 let shouldDownload = false;
+let activeTab = 'md';
 
 // Default date formatting helper (YYYY/MM/DD)
 function getTodayString() {
@@ -276,9 +278,13 @@ function saveDraft() {
 }
 
 const debouncedSaveDraft = debounce(saveDraft, 500);
-const debouncedConvert = debounce(async () => {
-  shouldDownload = false;
-  await convert();
+const debouncedRefresh = debounce(async () => {
+  if (activeTab === 'md') {
+    await updateMdPreview();
+  } else {
+    shouldDownload = false;
+    await convert();
+  }
 }, 1000);
 
 previewBtn.disabled = true;
@@ -291,9 +297,17 @@ fileInput.addEventListener("change", async () => {
   await uploadFile(file);
 });
 
+async function refreshCurrentTab() {
+  if (activeTab === 'md') {
+    await updateMdPreview();
+  } else {
+    shouldDownload = false;
+    await convert();
+  }
+}
+
 previewBtn.addEventListener("click", async () => {
-  shouldDownload = false;
-  await convert();
+  await refreshCurrentTab();
 });
 
 convertBtn.addEventListener("click", async () => {
@@ -311,7 +325,7 @@ toggleSidebarBtn.addEventListener("click", () => {
 markdownEditor.addEventListener("input", () => {
   updateCoverToggleState();
   debouncedSaveDraft();
-  debouncedConvert();
+  debouncedRefresh();
 });
 
 const configElements = [
@@ -327,13 +341,12 @@ configElements.forEach(elem => {
     if (elem.type === "checkbox" || elem.tagName === "SELECT") {
       elem.addEventListener("change", async () => {
         saveDraft();
-        shouldDownload = false;
-        await convert();
+        await refreshCurrentTab();
       });
     } else {
       elem.addEventListener("input", () => {
         debouncedSaveDraft();
-        debouncedConvert();
+        debouncedRefresh();
       });
     }
   }
@@ -347,16 +360,14 @@ coverToggle.addEventListener("change", async () => {
     removeCoverTemplate();
   }
   saveDraft();
-  shouldDownload = false;
-  await convert();
+  await refreshCurrentTab();
 });
 
 // One-click write sidebar fields into cover page template in the editor
 applyToCoverBtn.addEventListener("click", async () => {
   applyFieldsToCover();
   saveDraft();
-  shouldDownload = false;
-  await convert();
+  await refreshCurrentTab();
 });
 
 // Register paste event for clipboard images
@@ -377,7 +388,7 @@ markdownEditor.addEventListener("paste", async (e) => {
         const markdownImage = `\n![image](${base64Url})\n`;
         insertTextAtCursor(markdownEditor, markdownImage);
         saveDraft();
-        await convert();
+        await refreshCurrentTab();
       };
       reader.readAsDataURL(file);
       break;
@@ -418,7 +429,7 @@ markdownEditor.addEventListener("drop", async (e) => {
       const markdownImage = `\n![image](${base64Url})\n`;
       insertTextAtCursor(markdownEditor, markdownImage);
       saveDraft();
-      await convert();
+      await refreshCurrentTab();
     };
     reader.readAsDataURL(file);
   } else if (file.name.endsWith(".md") || file.name.endsWith(".markdown")) {
@@ -487,9 +498,8 @@ async function loadDraft() {
       previewBtn.disabled = false;
       convertBtn.disabled = false;
       
-      // Auto trigger preview to render PDF on load
-      shouldDownload = false;
-      await convert();
+      // Auto trigger preview on load
+      await refreshCurrentTab();
     }
   } catch (e) {
     console.error("Failed to load draft:", e);
@@ -515,9 +525,8 @@ async function uploadFile(file) {
     // Sync checkbox state for the uploaded file
     updateCoverToggleState();
     
-    // Automatically preview (compile PDF and show in right panel)
-    shouldDownload = false;
-    await convert();
+    // Automatically preview based on active tab
+    await refreshCurrentTab();
     saveDraft();
   };
   reader.readAsText(file);
@@ -554,8 +563,8 @@ async function pollJob() {
   if (job.status === "succeeded") {
     downloadLink.href = job.pdf_url;
     downloadLink.hidden = false;
-    previewFrame.removeAttribute("srcdoc");
-    previewFrame.src = job.pdf_url + "?inline=true&t=" + Date.now();
+    pdfPreviewFrame.removeAttribute("srcdoc");
+    pdfPreviewFrame.src = job.pdf_url + "?inline=true&t=" + Date.now();
     
     if (shouldDownload) {
       const filename = fileLabel.textContent !== "Markdownを選択" ? fileLabel.textContent.replace(/\.md$/i, ".pdf") : "document.pdf";
@@ -657,6 +666,38 @@ function appendLog(text, error = false) {
   } else {
     console.log(text);
     serverState.style.color = "";
+  }
+}
+
+// Tab switching
+document.querySelectorAll('.preview-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    if (tab === activeTab) return;
+    activeTab = tab;
+    document.querySelectorAll('.preview-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.preview-frame').forEach(f => f.classList.toggle('active', f.id === `${tab}PreviewFrame`));
+    if (tab === 'md') {
+      updateMdPreview();
+    } else {
+      shouldDownload = false;
+      convert();
+    }
+  });
+});
+
+async function updateMdPreview() {
+  if (!fileId && !markdownEditor.value) return;
+  try {
+    const response = await fetchJson("/api/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(renderPayload()),
+    });
+    mdPreviewFrame.srcdoc = response.html;
+    appendLogs(response.warnings);
+  } catch (e) {
+    // error already handled by fetchJson
   }
 }
 

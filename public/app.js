@@ -162,61 +162,56 @@ function applyFieldsToCover() {
     jaDate = `${dateParts[0]}年${dateParts[1]}月${dateParts[2]}日`;
   }
 
-  // Split markdown into lines and perform targeted replacements
-  const lines = markdown.split("\n");
-  const updatedLines = lines.map(line => {
-    // 1. First title line
-    if (line.trim().startsWith("# ") && !line.trim().startsWith("##")) {
-      return `# ${docName}`;
-    }
-    
-    // 2. Bold subtitle line
-    if (line.trim().startsWith("**") && line.trim().endsWith("**")) {
-      return `**${docName}**`;
-    }
-    
-    // 3. Version line (e.g. 第1.0版)
-    if (/^第[0-9a-zA-Z\.-]+版$/.test(line.trim())) {
-      return `第${version}版`;
-    }
-    
-    // 4. Cover list date line (初版 ： 2026年07月31日)
-    if (line.includes("初版") && line.includes("：") && line.includes("年")) {
-      return line.replace(/(-\s*初版\s*：\s*).*/, `$1${jaDate}`);
-    }
-    
-    // 5. Document name row in table
-    if (line.includes("| ドキュメント名称 ")) {
-      return line.replace(/(\| ドキュメント名称\s*\|\s*)[^|]+(\s*\|)/, `$1${docName}$2`);
-    }
-    
-    // 6. ID row in table
-    if (line.includes("| ID ")) {
-      return line.replace(/(\| ID\s*\|\s*)[^|]+(\s*\|)/, `$1${docCode}$2`);
-    }
-    
-    // 7. Creator row in table
-    if (line.includes("| 作成者 ")) {
-      return line.replace(/(\| 作成者\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
-    }
-    
-    // 8. Creation date row in table
-    if (line.includes("| 作成日 ")) {
-      return line.replace(/(\| 作成日\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
-    }
-    
-    // 9. Initial revision row in table (e.g. | 01.00 | 初版 | BIPROGY | 2026/07/31 |)
-    if (line.includes("初版") && line.startsWith("|")) {
-      let temp = line.replace(/(\| )[0-9.]+(\s*\|\s*初版\s*\|)/, `$1${version}$2`);
-      temp = temp.replace(/(\| 初版\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
-      temp = temp.replace(/(\| 初版\s*\|\s*[^|]+\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
-      return temp;
-    }
-    
-    return line;
-  });
+  // Split by the page break separator to avoid modifying the main document text
+  const parts = markdown.split(/\n---\n/);
+  if (parts.length >= 2) {
+    // 1. Process Cover Page (parts[0])
+    const coverLines = parts[0].split("\n");
+    const updatedCoverLines = coverLines.map(line => {
+      if (line.trim().startsWith("# ") && !line.trim().startsWith("##")) {
+        return `# ${docName}`;
+      }
+      if (line.trim().startsWith("**") && line.trim().endsWith("**")) {
+        return `**${docName}**`;
+      }
+      if (/^第[0-9a-zA-Z\.-]+版$/.test(line.trim())) {
+        return `第${version}版`;
+      }
+      if (line.includes("初版") && line.includes("：") && line.includes("年")) {
+        return line.replace(/(-\s*初版\s*：\s*).*/, `$1${jaDate}`);
+      }
+      return line;
+    });
+    parts[0] = updatedCoverLines.join("\n");
 
-  markdownEditor.value = updatedLines.join("\n");
+    // 2. Process Revision History Page (parts[1])
+    const historyLines = parts[1].split("\n");
+    const updatedHistoryLines = historyLines.map(line => {
+      if (line.includes("| ドキュメント名称 ")) {
+        return line.replace(/(\| ドキュメント名称\s*\|\s*)[^|]+(\s*\|)/, `$1${docName}$2`);
+      }
+      if (line.includes("| ID ")) {
+        return line.replace(/(\| ID\s*\|\s*)[^|]+(\s*\|)/, `$1${docCode}$2`);
+      }
+      if (line.includes("| 作成者 ")) {
+        return line.replace(/(\| 作成者\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
+      }
+      if (line.includes("| 作成日 ")) {
+        return line.replace(/(\| 作成日\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
+      }
+      if (line.includes("初版") && line.startsWith("|")) {
+        let temp = line.replace(/(\| )[0-9.]+(\s*\|\s*初版\s*\|)/, `$1${version}$2`);
+        temp = temp.replace(/(\| 初版\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
+        temp = temp.replace(/(\| 初版\s*\|\s*[^|]+\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
+        return temp;
+      }
+      return line;
+    });
+    parts[1] = updatedHistoryLines.join("\n");
+
+    markdownEditor.value = parts.join("\n---\n");
+  }
+
   updateCoverToggleState();
 }
 
@@ -359,6 +354,7 @@ configElements.forEach(elem => {
 coverToggle.addEventListener("change", async () => {
   if (coverToggle.checked) {
     insertCoverTemplate();
+    applyFieldsToCover();
   } else {
     removeCoverTemplate();
   }

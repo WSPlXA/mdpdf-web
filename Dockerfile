@@ -19,8 +19,8 @@ ENV MDPDF_BIND=0.0.0.0:8080 \
     MDPDF_PUPPETEER_CONFIG=/app/puppeteer-config.json \
     PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update || true
+RUN apt-get install -y --allow-unauthenticated --no-install-recommends \
     ca-certificates \
     chromium \
     fonts-noto-cjk \

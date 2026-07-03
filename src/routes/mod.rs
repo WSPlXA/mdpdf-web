@@ -192,7 +192,13 @@ pub async fn download(
         return Err(AppError::BadRequest("invalid PDF path".into()));
     }
     let bytes = tokio::fs::read(path).await?;
-    let stem = job.filename.trim_end_matches(".md").trim_end_matches(".markdown");
+    let stem = if let Some(stripped) = job.filename.strip_suffix(".markdown") {
+        stripped
+    } else if let Some(stripped) = job.filename.strip_suffix(".md") {
+        stripped
+    } else {
+        &job.filename
+    };
     let filename = format!("{stem}.pdf");
     
     let disposition = if query.inline {

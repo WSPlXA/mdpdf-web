@@ -7,6 +7,10 @@ const strictToggle = document.querySelector("#strictToggle");
 const coverToggle = document.querySelector("#coverToggle");
 const tocToggle = document.querySelector("#tocToggle");
 const chapterBreakToggle = document.querySelector("#chapterBreakToggle");
+const diffToggle = document.querySelector("#diffToggle");
+const diffUploadContainer = document.querySelector("#diffUploadContainer");
+const diffFileInput = document.querySelector("#diffFileInput");
+const diffFileLabel = document.querySelector("#diffFileLabel");
 const docNameInput = document.querySelector("#docNameInput");
 const docCodeInput = document.querySelector("#docCodeInput");
 const docDateInput = document.querySelector("#docDateInput");
@@ -40,6 +44,7 @@ let fileId = null;
 let currentJob = null;
 let shouldDownload = false;
 let activeTab = 'md';
+let compareMarkdownContent = "";
 
 // Default date formatting helper (YYYY/MM/DD)
 function getTodayString() {
@@ -248,6 +253,9 @@ function saveDraft() {
     cover_enabled: coverToggle.checked,
     toc_enabled: tocToggle.checked,
     chapter_page_break: chapterBreakToggle.checked,
+    diff_enabled: diffToggle.checked,
+    compare_markdown_content: compareMarkdownContent,
+    diff_file_name: diffFileLabel.textContent,
     doc_name: docNameInput.value,
     doc_code: docCodeInput.value,
     doc_date: docDateInput.value,
@@ -279,13 +287,17 @@ function saveDraft() {
 
 const debouncedSaveDraft = debounce(saveDraft, 500);
 const debouncedRefresh = debounce(async () => {
+  await refreshCurrentTab();
+}, 1000);
+
+async function refreshCurrentTab() {
   if (activeTab === 'md') {
     await updateMdPreview();
   } else {
     shouldDownload = false;
     await convert();
   }
-}, 1000);
+}
 
 previewBtn.disabled = true;
 convertBtn.disabled = true;
@@ -296,15 +308,6 @@ fileInput.addEventListener("change", async () => {
   if (!file) return;
   await uploadFile(file);
 });
-
-async function refreshCurrentTab() {
-  if (activeTab === 'md') {
-    await updateMdPreview();
-  } else {
-    shouldDownload = false;
-    await convert();
-  }
-}
 
 previewBtn.addEventListener("click", async () => {
   await refreshCurrentTab();
@@ -335,7 +338,7 @@ const configElements = [
   footerFormatInput, footerAlignSelect, headerToggle, headerFormatInput, headerAlignSelect
 ];
 
-// Config elements change listeners (excluding coverToggle)
+// Config elements change listeners (excluding coverToggle and diffToggle)
 configElements.forEach(elem => {
   if (elem) {
     if (elem.type === "checkbox" || elem.tagName === "SELECT") {
@@ -361,6 +364,35 @@ coverToggle.addEventListener("change", async () => {
   }
   saveDraft();
   await refreshCurrentTab();
+});
+
+// Listener for diffToggle to show comparison file selector
+diffToggle.addEventListener("change", async () => {
+  if (diffToggle.checked) {
+    diffUploadContainer.style.display = "block";
+  } else {
+    diffUploadContainer.style.display = "none";
+    compareMarkdownContent = "";
+    diffFileLabel.textContent = "比較対象の旧版ファイルを選択";
+    diffFileInput.value = "";
+  }
+  saveDraft();
+  await refreshCurrentTab();
+});
+
+// Listener for diffFileInput load and sync
+diffFileInput.addEventListener("change", async () => {
+  const file = diffFileInput.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    compareMarkdownContent = e.target.result;
+    diffFileLabel.textContent = `旧版: ${file.name}`;
+    saveDraft();
+    await refreshCurrentTab();
+  };
+  reader.readAsText(file);
 });
 
 // One-click write sidebar fields into cover page template in the editor
@@ -473,6 +505,16 @@ async function loadDraft() {
     coverToggle.checked = !!draft.cover_enabled;
     tocToggle.checked = !!draft.toc_enabled;
     chapterBreakToggle.checked = !!draft.chapter_page_break;
+    
+    diffToggle.checked = !!draft.diff_enabled;
+    compareMarkdownContent = draft.compare_markdown_content || "";
+    diffFileLabel.textContent = draft.diff_file_name || "比較対象 of 旧版ファイルを選択";
+    if (diffToggle.checked) {
+      diffUploadContainer.style.display = "block";
+    } else {
+      diffUploadContainer.style.display = "none";
+    }
+
     docNameInput.value = draft.doc_name || "";
     docCodeInput.value = draft.doc_code || "";
     docDateInput.value = draft.doc_date || defaultDate;
@@ -598,6 +640,7 @@ function renderPayload() {
   return {
     file_id: fileId,
     markdown_content: markdownEditor.value,
+    compare_markdown_content: diffToggle.checked ? compareMarkdownContent : null,
     filename: fileLabel.textContent !== "Markdownを選択" ? fileLabel.textContent : "document.md",
     theme: themeSelect.value,
     render_mermaid: mermaidToggle.checked,
@@ -626,7 +669,7 @@ function formatPayload() {
     footer_align: cleanValue(footerAlignSelect.value),
     header_enabled: headerToggle.checked,
     header_format: cleanValue(headerFormatInput.value),
-    header_align: cleanValue(headerAlignSelect.value),
+    header_align: headerAlignSelect.value,
   });
 }
 

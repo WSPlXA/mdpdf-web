@@ -3,6 +3,7 @@ use std::path::Path;
 use comrak::{markdown_to_html, Options};
 use html_escape::encode_text;
 use regex::Regex;
+use similar::{ChangeTag, TextDiff};
 
 use crate::{
     error::{AppError, Result},
@@ -36,7 +37,16 @@ pub async fn render_markdown_file(
     validate_theme_name(&req.theme)?;
     let theme_dir = state.theme_dir(&req.theme);
     let theme = load_theme_render_options(&theme_dir, req).await?;
-    let body = render_body(markdown, req, render_dir).await?;
+    
+    let diffed_markdown;
+    let md_input = if let Some(ref old_md) = req.compare_markdown_content {
+        diffed_markdown = diff_markdown(old_md, markdown);
+        &diffed_markdown
+    } else {
+        markdown
+    };
+
+    let body = render_body(md_input, req, render_dir).await?;
     let body_html = decorate_body(
         &body.html,
         markdown,
@@ -51,6 +61,31 @@ pub async fn render_markdown_file(
         logs: body.logs,
         print_options: theme.print_options,
     })
+}
+
+fn diff_markdown(old: &str, new: &str) -> String {
+    let diff = TextDiff::from_lines(old, new);
+    let mut output = String::new();
+    
+    for change in diff.iter_all_changes() {
+        let value = change.value();
+        match change.tag() {
+            ChangeTag::Equal => {
+                output.push_str(value);
+            }
+            ChangeTag::Delete => {
+                output.push_str("<div class=\"diff-del\">\n\n");
+                output.push_str(value);
+                output.push_str("\n\n</div>\n");
+            }
+            ChangeTag::Insert => {
+                output.push_str("<div class=\"diff-add\">\n\n");
+                output.push_str(value);
+                output.push_str("\n\n</div>\n");
+            }
+        }
+    }
+    output
 }
 
 fn decorate_body(
@@ -80,7 +115,7 @@ fn decorate_body(
     Ok(out)
 }
 
-fn render_cover(title: &str, theme: &str, options: &DocumentOptions) -> String {
+fn render_cover(title: &str, _theme: &str, options: &DocumentOptions) -> String {
     let mut rows = Vec::with_capacity(3);
     if !options.doc_code.is_empty() {
         rows.push(("文档编号", options.doc_code.as_str()));
@@ -193,7 +228,11 @@ async fn render_body(
     options.extension.strikethrough = true;
     options.extension.tasklist = true;
     options.extension.header_ids = Some("h-".to_string());
-    options.render.unsafe_ = false;
+    if req.compare_markdown_content.is_some() {
+        options.render.unsafe_ = true; // Allow diff-add and diff-del HTML tags
+    } else {
+        options.render.unsafe_ = false;
+    }
 
     let mut html = markdown_to_html(&without_diagrams, &options);
     let mut warnings = Vec::new();

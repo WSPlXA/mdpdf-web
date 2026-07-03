@@ -35,4 +35,25 @@
   .chapter-breaks h2 {
     break-before: page;
   }
+
+  /* Document Revision Diffs Print Styling */
+  .diff-add {
+    background-color: #e6ffec !important;
+    border-left: 5px solid #2da44e !important;
+    padding-left: 12px;
+    margin: 8px 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .diff-del {
+    background-color: #ffebe9 !important;
+    color: #cf222e !important;
+    text-decoration: line-through !important;
+    border-left: 5px solid #cf222e !important;
+    padding-left: 12px;
+    margin: 8px 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

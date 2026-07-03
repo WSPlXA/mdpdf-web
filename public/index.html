@@ -40,6 +40,13 @@
           <label><input id="coverToggle" type="checkbox"> 表紙</label>
           <label><input id="tocToggle" type="checkbox"> 目次</label>
           <label><input id="chapterBreakToggle" type="checkbox"> 章ごとに改ページ</label>
+          <label><input id="diffToggle" type="checkbox"> 差分比較</label>
+        </div>
+        <div id="diffUploadContainer" style="display: none; margin: 0 0 12px 0;">
+          <label class="file-upload" style="background: var(--soft); border: 1px dashed var(--line); padding: 8px 10px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; height: 32px;">
+            <input id="diffFileInput" type="file" accept=".md,.markdown" style="display: none;">
+            <span id="diffFileLabel" style="font-size: 11px; color: var(--muted);">比較対象の旧版ファイルを選択</span>
+          </label>
         </div>
         <label class="field">
           <span>ドキュメント名称</span>
@@ -151,8 +158,8 @@
         <button type="button" class="preview-tab" data-tab="pdf">PDF プレビュー</button>
       </div>
       <div class="preview-body">
-        <iframe id="mdPreviewFrame" class="preview-frame" title="MD preview" sandbox="allow-scripts"></iframe>
-        <iframe id="pdfPreviewFrame" class="preview-frame" title="PDF preview" hidden></iframe>
+        <iframe id="mdPreviewFrame" class="preview-frame active" title="MD preview" sandbox="allow-scripts"></iframe>
+        <iframe id="pdfPreviewFrame" class="preview-frame" title="PDF preview"></iframe>
       </div>
     </section>
   </main>

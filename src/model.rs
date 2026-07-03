@@ -44,6 +44,7 @@ pub struct ConvertJob {
 pub struct RenderRequest {
     pub file_id: Option<String>,
     pub markdown_content: Option<String>,
+    pub compare_markdown_content: Option<String>,
     pub filename: Option<String>,
     #[serde(default = "default_theme")]
     pub theme: String,

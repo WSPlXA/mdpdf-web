@@ -34,4 +34,24 @@
   .chapter-breaks h2 {
     break-before: page;
   }
+
+  .diff-add {
+    background: #e8f5ef !important;
+    border-left: 5px solid #2f6f73 !important;
+    padding-left: 12px;
+    margin: 8px 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .diff-del {
+    background: #fdebea !important;
+    color: #9f3a38 !important;
+    text-decoration: line-through !important;
+    border-left: 5px solid #9f3a38 !important;
+    padding-left: 12px;
+    margin: 8px 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

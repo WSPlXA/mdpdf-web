@@ -1,16 +1,23 @@
 services:
   app:
     build: .
+    init: true
+    ports:
+      - "8080:8080"
     volumes:
       - mdpdf-workdir:/app/workdir
       - ./public:/app/public
+      - ./themes:/app/themes:ro
+      - ./scripts:/app/scripts:ro
+      - ./puppeteer-config.json:/app/puppeteer-config.json:ro
     environment:
       MDPDF_BIND: 0.0.0.0:8080
       MDPDF_WORKDIR: /app/workdir
       MDPDF_THEMES: /app/themes
-      MDPDF_CHROMIUM: chromium
+      MDPDF_CHROMIUM: chromium-headless-shell
       MDPDF_PRINT_SCRIPT: /app/scripts/print_pdf.mjs
       MDPDF_PUPPETEER_CONFIG: /app/puppeteer-config.json
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-headless-shell
     restart: unless-stopped
 
   caddy:

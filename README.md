@@ -41,8 +41,8 @@ Without Docker you need these on PATH:
 
 - `cargo`
 - `mmdc`
-- `chromium` / `chrome` / `msedge`, or set `MDPDF_CHROMIUM`
-- optional: `MDPDF_PUPPETEER_CONFIG` if `mmdc` must point at a fixed Chromium
+- `chromium-headless-shell`, or set `MDPDF_CHROMIUM` to a compatible Chrome / Chromium / Edge binary
+- optional: `MDPDF_PUPPETEER_CONFIG` if `mmdc` must point at the same browser binary
 - optional: `MDPDF_PRINT_SCRIPT` to override the DevTools PDF renderer script
 
 ```powershell
@@ -110,7 +110,7 @@ With the service running:
 .\scripts\regression_smoke.ps1
 ```
 
-The script uploads `samples\regression.md`, verifies Mermaid placeholders do not leak, verifies cover and TOC HTML exist, converts to PDF, downloads `workdir\regression-output.pdf`, and checks the page footer when Python has `pypdf`.
+The script uploads `samples\regression.md`, verifies Mermaid placeholders do not leak, accepts either a rendered Mermaid figure or a visible Mermaid error block in non-strict mode, verifies cover and TOC HTML exist, converts to PDF, downloads `workdir\regression-output.pdf`, and checks the page footer when Python has `pypdf`.
 
 ## API
 

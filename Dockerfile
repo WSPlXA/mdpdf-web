@@ -14,15 +14,15 @@ FROM node:22-bookworm-slim
 ENV MDPDF_BIND=0.0.0.0:8080 \
     MDPDF_WORKDIR=/app/workdir \
     MDPDF_THEMES=/app/themes \
-    MDPDF_CHROMIUM=chromium \
+    MDPDF_CHROMIUM=chromium-headless-shell \
     MDPDF_PRINT_SCRIPT=/app/scripts/print_pdf.mjs \
     MDPDF_PUPPETEER_CONFIG=/app/puppeteer-config.json \
     PUPPETEER_SKIP_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-headless-shell
 RUN apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update || true
 RUN apt-get install -y --allow-unauthenticated --no-install-recommends \
     ca-certificates \
-    chromium \
+    chromium-headless-shell \
     fonts-noto-cjk \
     fonts-noto-color-emoji \
     && npm install -g @mermaid-js/mermaid-cli \

@@ -99,7 +99,11 @@ const templateHeader = "## 表紙";
 // Automatically updates the cover page checkbox state based on editor content
 function updateCoverToggleState() {
   const currentVal = markdownEditor.value;
-  coverToggle.checked = currentVal.includes(templateHeader);
+  coverToggle.checked = hasEditorCover();
+}
+
+function hasEditorCover() {
+  return markdownEditor.value.includes(templateHeader);
 }
 
 function insertCoverTemplate() {
@@ -504,7 +508,7 @@ async function loadDraft() {
     
     diffToggle.checked = !!draft.diff_enabled;
     compareMarkdownContent = draft.compare_markdown_content || "";
-    diffFileLabel.textContent = draft.diff_file_name || "比較対象 of 旧版ファイルを選択";
+    diffFileLabel.textContent = draft.diff_file_name || "比較対象の旧版ファイルを選択";
     if (diffToggle.checked) {
       diffUploadContainer.style.display = "block";
     } else {
@@ -647,7 +651,7 @@ function renderPayload() {
 
 function formatPayload() {
   return compactObject({
-    cover_enabled: coverToggle.checked,
+    cover_enabled: coverToggle.checked && !hasEditorCover(),
     toc_enabled: tocToggle.checked,
     chapter_page_break: chapterBreakToggle.checked,
     doc_name: cleanValue(docNameInput.value),

@@ -26,7 +26,7 @@ const chrome = spawn(
     "--remote-debugging-port=0",
     "about:blank",
   ],
-  { stdio: ["ignore", "ignore", "pipe"] },
+  { detached: true, stdio: ["ignore", "pipe", "pipe"] },
 );
 
 const endpoint = await readDevToolsEndpoint(chrome);
@@ -64,7 +64,7 @@ try {
   await writeFile(pdfPath, Buffer.from(result.data, "base64"));
 } finally {
   cdp.close();
-  chrome.kill("SIGTERM");
+  killChrome(chrome);
 }
 
 async function readPrintOptions(path) {
@@ -88,31 +88,52 @@ function numberOrZero(value) {
 
 function readDevToolsEndpoint(child) {
   return new Promise((resolveEndpoint, reject) => {
-    let stderr = "";
+    let output = "";
     const timer = setTimeout(() => {
-      reject(new Error("timed out waiting for DevTools endpoint"));
+      killChrome(child);
+      reject(new Error(`timed out waiting for DevTools endpoint\n${output.trim()}`));
     }, 10_000);
 
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-      const match = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
+    const capture = (chunk) => {
+      output += chunk;
+      const match = output.match(/DevTools listening on (ws:\/\/[^\s]+)/);
       if (match) {
         clearTimeout(timer);
         resolveEndpoint(match[1]);
       }
-    });
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", capture);
+    child.stderr.on("data", capture);
 
     child.on("error", (error) => {
       clearTimeout(timer);
+      killChrome(child);
       reject(error);
     });
 
     child.on("exit", (code) => {
       clearTimeout(timer);
-      reject(new Error(`chromium exited before DevTools endpoint was ready: ${code}`));
+      reject(
+        new Error(`chromium exited before DevTools endpoint was ready: ${code}\n${output.trim()}`),
+      );
     });
   });
+}
+
+function killChrome(child) {
+  if (!child.pid) return;
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // The browser may already be gone.
+    }
+  }
 }
 
 async function connectCdp(endpoint) {

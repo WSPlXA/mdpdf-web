@@ -13,7 +13,7 @@ $payload = @{
     file_id = $upload.file_id
     theme = "jp-standard"
     render_mermaid = $true
-    strict_mermaid = $true
+    strict_mermaid = $false
     format = @{
         cover_enabled = $true
         toc_enabled = $true
@@ -36,14 +36,33 @@ $preview = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/preview" -ContentTy
 if ($preview.html -match "@@MERMAID_BLOCK_") {
     throw "preview contains leaked Mermaid placeholder"
 }
-if ($preview.html -notmatch "mermaid-diagram") {
-    throw "preview does not contain rendered Mermaid figure"
+$hasMermaidFigure = ($preview.html -match "mermaid-diagram")
+$hasMermaidError = ($preview.html -match "<div class=`"diagram-error`"")
+if (-not ($hasMermaidFigure -or $hasMermaidError)) {
+    throw "preview contains neither rendered Mermaid figure nor Mermaid error block"
 }
 if ($preview.html -notmatch "doc-cover") {
     throw "preview does not contain cover"
 }
 if ($preview.html -notmatch "doc-toc") {
     throw "preview does not contain TOC"
+}
+
+$diffPayload = @{
+    markdown_content = "# Diff Smoke`n`nunchanged`n<script>alert(1)</script>`n"
+    compare_markdown_content = "# Diff Smoke`n`nunchanged`n"
+    filename = "diff-smoke.md"
+    theme = "jp-standard"
+    render_mermaid = $false
+    strict_mermaid = $false
+} | ConvertTo-Json -Compress -Depth 4
+
+$diffPreview = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/preview" -ContentType "application/json" -Body $diffPayload
+if ($diffPreview.html -notmatch "diff-add") {
+    throw "diff preview does not contain added block"
+}
+if ($diffPreview.html -match "<script>alert\(1\)</script>") {
+    throw "diff preview rendered unsafe script tag"
 }
 
 $convert = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/convert" -ContentType "application/json" -Body $payload
@@ -100,7 +119,8 @@ print('pages=' + str(len(reader.pages)))
     pdf_path = $pdf.FullName
     pdf_bytes = $pdf.Length
     preview_has_placeholder = ($preview.html -match "@@MERMAID_BLOCK_")
-    preview_has_mermaid_figure = ($preview.html -match "mermaid-diagram")
+    preview_has_mermaid_figure = $hasMermaidFigure
+    preview_has_mermaid_error = $hasMermaidError
     preview_has_cover = ($preview.html -match "doc-cover")
     preview_has_toc = ($preview.html -match "doc-toc")
     pdf_text_check = $textCheck

@@ -4,6 +4,7 @@ use comrak::{markdown_to_html, Options};
 use html_escape::encode_text;
 use regex::Regex;
 use similar::{ChangeTag, TextDiff};
+use uuid::Uuid;
 
 use crate::{
     error::{AppError, Result},
@@ -27,6 +28,13 @@ struct MermaidBlock {
     source: String,
 }
 
+struct DiffMarkers {
+    add_start: String,
+    add_end: String,
+    del_start: String,
+    del_end: String,
+}
+
 pub async fn render_markdown_file(
     state: &AppState,
     markdown: &str,
@@ -38,15 +46,15 @@ pub async fn render_markdown_file(
     let theme_dir = state.theme_dir(&req.theme);
     let theme = load_theme_render_options(&theme_dir, req).await?;
     
-    let diffed_markdown;
-    let md_input = if let Some(ref old_md) = req.compare_markdown_content {
-        diffed_markdown = diff_markdown(old_md, markdown);
-        &diffed_markdown
+    let diffed;
+    let (md_input, diff_markers) = if let Some(ref old_md) = req.compare_markdown_content {
+        diffed = diff_markdown(old_md, markdown);
+        (diffed.markdown.as_str(), Some(&diffed.markers))
     } else {
-        markdown
+        (markdown, None)
     };
 
-    let body = render_body(md_input, req, render_dir).await?;
+    let body = render_body(md_input, req, render_dir, diff_markers).await?;
     let body_html = decorate_body(
         &body.html,
         markdown,
@@ -63,29 +71,73 @@ pub async fn render_markdown_file(
     })
 }
 
-fn diff_markdown(old: &str, new: &str) -> String {
+struct DiffMarkdown {
+    markdown: String,
+    markers: DiffMarkers,
+}
+
+fn diff_markdown(old: &str, new: &str) -> DiffMarkdown {
     let diff = TextDiff::from_lines(old, new);
-    let mut output = String::new();
-    
+    let markers = DiffMarkers::new();
+    let mut output = String::with_capacity(old.len() + new.len() + 512);
+    let mut active: Option<ChangeTag> = None;
+
     for change in diff.iter_all_changes() {
-        let value = change.value();
-        match change.tag() {
-            ChangeTag::Equal => {
-                output.push_str(value);
-            }
-            ChangeTag::Delete => {
-                output.push_str("<div class=\"diff-del\">\n\n");
-                output.push_str(value);
-                output.push_str("\n\n</div>\n");
-            }
-            ChangeTag::Insert => {
-                output.push_str("<div class=\"diff-add\">\n\n");
-                output.push_str(value);
-                output.push_str("\n\n</div>\n");
-            }
+        let tag = change.tag();
+        if active != Some(tag) {
+            close_diff_run(&mut output, &markers, active);
+            open_diff_run(&mut output, &markers, tag);
+            active = Some(tag);
+        }
+        output.push_str(change.value());
+    }
+    close_diff_run(&mut output, &markers, active);
+
+    DiffMarkdown {
+        markdown: output,
+        markers,
+    }
+}
+
+impl DiffMarkers {
+    fn new() -> Self {
+        let id = Uuid::new_v4().simple();
+        Self {
+            add_start: format!("@@MDPDF_DIFF_{id}_ADD_START@@"),
+            add_end: format!("@@MDPDF_DIFF_{id}_ADD_END@@"),
+            del_start: format!("@@MDPDF_DIFF_{id}_DEL_START@@"),
+            del_end: format!("@@MDPDF_DIFF_{id}_DEL_END@@"),
         }
     }
-    output
+
+    fn contains_any(&self, value: &str) -> bool {
+        value.contains(&self.add_start)
+            || value.contains(&self.add_end)
+            || value.contains(&self.del_start)
+            || value.contains(&self.del_end)
+    }
+}
+
+fn open_diff_run(out: &mut String, markers: &DiffMarkers, tag: ChangeTag) {
+    match tag {
+        ChangeTag::Equal => {}
+        ChangeTag::Delete => push_marker(out, &markers.del_start),
+        ChangeTag::Insert => push_marker(out, &markers.add_start),
+    }
+}
+
+fn close_diff_run(out: &mut String, markers: &DiffMarkers, tag: Option<ChangeTag>) {
+    match tag {
+        Some(ChangeTag::Delete) => push_marker(out, &markers.del_end),
+        Some(ChangeTag::Insert) => push_marker(out, &markers.add_end),
+        _ => {}
+    }
+}
+
+fn push_marker(out: &mut String, marker: &str) {
+    out.push_str("\n\n");
+    out.push_str(marker);
+    out.push_str("\n\n");
 }
 
 fn decorate_body(
@@ -220,6 +272,7 @@ async fn render_body(
     markdown: &str,
     req: &RenderRequest,
     render_dir: Option<&Path>,
+    diff_markers: Option<&DiffMarkers>,
 ) -> Result<RenderedDocument> {
     let (without_diagrams, diagrams) = extract_mermaid_blocks(markdown);
     let mut options = Options::default();
@@ -228,11 +281,7 @@ async fn render_body(
     options.extension.strikethrough = true;
     options.extension.tasklist = true;
     options.extension.header_ids = Some("h-".to_string());
-    if req.compare_markdown_content.is_some() {
-        options.render.unsafe_ = true; // Allow diff-add and diff-del HTML tags
-    } else {
-        options.render.unsafe_ = false;
-    }
+    options.render.unsafe_ = false;
 
     let mut html = markdown_to_html(&without_diagrams, &options);
     let mut warnings = Vec::new();
@@ -283,6 +332,9 @@ async fn render_body(
             "internal mermaid placeholder leaked into rendered HTML".into(),
         ));
     }
+    if let Some(markers) = diff_markers {
+        html = apply_diff_markers(html, markers)?;
+    }
 
     detect_wide_tables(&html, &mut warnings);
     Ok(RenderedDocument {
@@ -291,6 +343,24 @@ async fn render_body(
         logs,
         print_options: PrintOptions::default(),
     })
+}
+
+fn apply_diff_markers(mut html: String, markers: &DiffMarkers) -> Result<String> {
+    for (marker, replacement) in [
+        (&markers.add_start, "<div class=\"diff-add\">"),
+        (&markers.add_end, "</div>"),
+        (&markers.del_start, "<div class=\"diff-del\">"),
+        (&markers.del_end, "</div>"),
+    ] {
+        let paragraph = format!("<p>{marker}</p>");
+        html = html.replace(&paragraph, replacement);
+    }
+    if markers.contains_any(&html) {
+        return Err(AppError::Conversion(
+            "internal diff marker leaked into rendered HTML".into(),
+        ));
+    }
+    Ok(html)
 }
 
 async fn apply_template(theme_dir: &Path, title: &str, body: &str, print: &str) -> Result<String> {
@@ -373,5 +443,35 @@ fn validate_theme_name(name: &str) -> Result<()> {
         Ok(())
     } else {
         Err(AppError::BadRequest("invalid theme name".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn diff_render_keeps_user_html_escaped() {
+        let old = "safe\n";
+        let new = "safe\n<script>alert(1)</script>\n";
+        let diffed = diff_markdown(old, new);
+        let req = RenderRequest {
+            file_id: None,
+            markdown_content: Some(new.to_string()),
+            compare_markdown_content: Some(old.to_string()),
+            filename: Some("document.md".to_string()),
+            theme: "jp-standard".to_string(),
+            render_mermaid: false,
+            strict_mermaid: false,
+            format: None,
+        };
+
+        let rendered = render_body(&diffed.markdown, &req, None, Some(&diffed.markers))
+            .await
+            .expect("diff render should succeed");
+
+        assert!(rendered.html.contains("diff-add"));
+        assert!(!rendered.html.contains("<script>alert(1)</script>"));
+        assert!(!diffed.markers.contains_any(&rendered.html));
     }
 }

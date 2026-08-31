@@ -1,51 +1,37 @@
 use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::Arc,
+    path::PathBuf,
+    sync::{Arc, RwLock},
 };
 
-use tokio::sync::{RwLock, Semaphore};
+use crate::theme_assets::MERMAID_RUNTIME;
 
-use crate::model::{ConvertJob, UploadedFile};
-
-#[derive(Clone)]
 pub struct AppState {
-    pub files_dir: PathBuf,
-    pub jobs_dir: PathBuf,
-    pub themes_dir: PathBuf,
-    pub files: Arc<RwLock<HashMap<String, UploadedFile>>>,
-    pub jobs: Arc<RwLock<HashMap<String, ConvertJob>>>,
-    pub convert_limiter: Arc<Semaphore>,
+    pub workspace: RwLock<Option<PathBuf>>,
+    pub export_limiter: tokio::sync::Semaphore,
+    mermaid_runtime: Arc<str>,
 }
 
 impl AppState {
-    pub async fn new(workdir: PathBuf, themes_dir: PathBuf) -> std::io::Result<Self> {
-        let files_dir = workdir.join("files");
-        let jobs_dir = workdir.join("jobs");
-        tokio::fs::create_dir_all(&files_dir).await?;
-        tokio::fs::create_dir_all(&jobs_dir).await?;
-        Ok(Self {
-            files_dir,
-            jobs_dir,
-            themes_dir,
-            files: Arc::new(RwLock::new(HashMap::new())),
-            jobs: Arc::new(RwLock::new(HashMap::new())),
-            convert_limiter: Arc::new(Semaphore::new(3)),
-        })
+    pub fn new() -> Self {
+        Self {
+            workspace: RwLock::new(None),
+            export_limiter: tokio::sync::Semaphore::new(1),
+            mermaid_runtime: Arc::from(MERMAID_RUNTIME),
+        }
     }
 
-    pub fn theme_dir(&self, name: &str) -> PathBuf {
-        self.themes_dir.join(name)
+    pub fn set_workspace(&self, path: PathBuf) {
+        *self.workspace.write().expect("workspace lock poisoned") = Some(path);
     }
 
-    pub fn job_dir(&self, job_id: &str) -> PathBuf {
-        self.jobs_dir.join(job_id)
+    pub fn workspace(&self) -> Option<PathBuf> {
+        self.workspace
+            .read()
+            .expect("workspace lock poisoned")
+            .clone()
     }
-}
 
-pub fn is_path_inside(base: &Path, candidate: &Path) -> bool {
-    match (base.canonicalize(), candidate.canonicalize()) {
-        (Ok(base), Ok(candidate)) => candidate.starts_with(base),
-        _ => false,
+    pub fn mermaid_runtime(&self) -> std::io::Result<Arc<str>> {
+        Ok(self.mermaid_runtime.clone())
     }
 }

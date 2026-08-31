@@ -3,167 +3,106 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Markdown PDF</title>
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/prism.min.css">
+  <title>Markdown PDF Desktop</title>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <main class="shell">
-    <aside class="panel control" id="sidebar">
-      <header>
-        <h1>Markdown PDF</h1>
-        <span id="serverState">ready</span>
+  <main class="app-shell">
+    <aside class="workspace-pane">
+      <header class="pane-header brand-header">
+        <div>
+          <strong>Markdown PDF</strong>
+          <small>Windows / Offline</small>
+        </div>
+        <button id="openFolderBtn" class="primary" type="button">フォルダを開く</button>
       </header>
-
-      <label class="dropzone" for="fileInput">
-        <input id="fileInput" type="file" accept=".md,.markdown">
-        <strong id="fileLabel">Markdownを選択</strong>
-        <small id="fileMeta">.md / .markdown、最大 10 MiB</small>
-      </label>
-
-      <label class="field">
-        <span>テンプレート</span>
-        <select id="themeSelect">
-          <option value="modern-tech" selected>modern-tech</option>
-          <option value="jp-standard">jp-standard</option>
-        </select>
-      </label>
-
-      <div class="toggles">
-        <label><input id="mermaidToggle" type="checkbox" checked> Mermaid</label>
-        <label><input id="strictToggle" type="checkbox"> 厳格モード</label>
+      <div class="workspace-meta">
+        <span id="workspacePath">フォルダ未選択</span>
+        <button id="refreshBtn" class="icon-button" type="button" title="更新">↻</button>
       </div>
+      <label class="filter-field">
+        <input id="fileFilter" type="search" placeholder="ファイルを絞り込み">
+      </label>
+      <div class="selection-bar">
+        <label><input id="selectAllFiles" type="checkbox"> 表示中を選択</label>
+        <span id="selectionCount">0 / 0</span>
+      </div>
+      <div id="fileList" class="file-list" role="listbox" aria-label="Markdown files">
+        <div class="empty-state"></div>
+      </div>
+    </aside>
 
-      <section class="format-panel" aria-label="PDF format">
-        <h2>フォーマット</h2>
-        <div class="toggles compact">
-          <label><input id="coverToggle" type="checkbox"> 表紙</label>
-          <label><input id="tocToggle" type="checkbox"> 目次</label>
-          <label><input id="chapterBreakToggle" type="checkbox"> 章ごとに改ページ</label>
-          <label><input id="diffToggle" type="checkbox"> 差分比較</label>
+    <section class="document-pane">
+      <header class="pane-header document-header">
+        <div class="document-title">
+          <strong id="activeFilename">文書未選択</strong>
+          <small id="activeRelativePath">左の一覧から Markdown を選択</small>
         </div>
-        <div id="diffUploadContainer" style="display: none; margin: 0 0 12px 0;">
-          <label class="file-upload" style="background: var(--soft); border: 1px dashed var(--line); padding: 8px 10px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; height: 32px;">
-            <input id="diffFileInput" type="file" accept=".md,.markdown" style="display: none;">
-            <span id="diffFileLabel" style="font-size: 11px; color: var(--muted);">比較対象の旧版ファイルを選択</span>
-          </label>
+        <div class="header-actions">
+          <button id="settingsToggle" type="button">出力設定</button>
+          <span id="dirtyState" class="state-pill">待機中</span>
+          <button id="reloadBtn" type="button" disabled>再読込</button>
+          <button id="saveBtn" class="primary" type="button" disabled>保存</button>
         </div>
-        <label class="field">
-          <span>ドキュメント名称</span>
-          <input id="docNameInput" type="text" placeholder="設計書">
+      </header>
+      <div id="settingsPanel" class="settings-panel" hidden>
+        <label>テーマ
+          <select id="themeSelect">
+            <option value="modern-tech">modern-tech</option>
+            <option value="jp-standard">jp-standard</option>
+          </select>
         </label>
-        <div class="margin-grid">
-          <label class="field">
-            <span>ドキュメントコード</span>
-            <input id="docCodeInput" type="text" placeholder="DOC-001">
-          </label>
-          <label class="field">
-            <span>作成日 (YYYY/MM/DD)</span>
-            <input id="docDateInput" type="text" placeholder="2026/07/31">
-          </label>
-        </div>
-        <div class="margin-grid">
-          <label class="field">
-            <span>バージョン</span>
-            <input id="versionInput" type="text" placeholder="v1.0">
-          </label>
-          <label class="field">
-            <span>作成者 / 部門</span>
-            <input id="ownerInput" type="text" placeholder="プラットフォームチーム">
-          </label>
-        </div>
-        <button id="applyToCoverBtn" class="toggle-sidebar-btn" type="button" style="width: 100%; justify-content: center; height: 32px; margin-top: 8px; margin-bottom: 4px;">📝 設定値を表紙に反映</button>
-        <label class="field">
-          <span>用紙サイズ</span>
+        <label>用紙
           <select id="pageSizeSelect">
             <option value="A4">A4</option>
             <option value="A3">A3</option>
             <option value="Letter">Letter</option>
           </select>
         </label>
-        <div class="margin-grid">
-          <label class="field">
-            <span>上</span>
-            <input id="marginTopInput" type="text" value="20mm" inputmode="decimal">
-          </label>
-          <label class="field">
-            <span>右</span>
-            <input id="marginRightInput" type="text" value="18mm" inputmode="decimal">
-          </label>
-          <label class="field">
-            <span>下</span>
-            <input id="marginBottomInput" type="text" value="18mm" inputmode="decimal">
-          </label>
-          <label class="field">
-            <span>左</span>
-            <input id="marginLeftInput" type="text" value="18mm" inputmode="decimal">
-          </label>
-        </div>
-        <div class="toggles compact">
-          <label><input id="headerToggle" type="checkbox"> ヘッダー</label>
-        </div>
-        <label class="field">
-          <span>ヘッダーテキスト</span>
-          <input id="headerFormatInput" type="text" placeholder="内部文書" value="">
-        </label>
-        <label class="field">
-          <span>位置</span>
-          <select id="headerAlignSelect">
-            <option value="left">left</option>
-            <option value="center">center</option>
-            <option value="right">right</option>
-          </select>
-        </label>
-
-        <div class="toggles compact">
-          <label><input id="pageNumberToggle" type="checkbox" checked> ページ番号</label>
-        </div>
-        <label class="field">
-          <span>フッターテキスト</span>
-          <input id="footerFormatInput" type="text" value="{page} / {total}">
-        </label>
-        <label class="field">
-          <span>位置</span>
-          <select id="footerAlignSelect">
-            <option value="right">right</option>
-            <option value="center">center</option>
-            <option value="left">left</option>
-          </select>
-        </label>
-      </section>
-
-      <div class="actions">
-        <button id="previewBtn" type="button">プレビュー</button>
-        <button id="convertBtn" type="button">PDF出力</button>
+        <label><input id="mermaidToggle" type="checkbox"> Mermaid (内蔵・オフライン)</label>
+        <label><input id="coverToggle" type="checkbox"> 表紙</label>
+        <label><input id="tocToggle" type="checkbox"> 目次</label>
+        <label><input id="chapterBreakToggle" type="checkbox"> 章ごとに改ページ</label>
       </div>
-    </aside>
-
-    <section class="panel editor">
-      <header>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button id="toggleSidebarBtn" class="toggle-sidebar-btn" type="button" title="設定パネルを切り替える">⚙️ 設定</button>
-          <h2>Markdown エディタ</h2>
-          <span id="savedIndicator" class="saved-indicator" style="opacity: 0; transition: opacity 0.3s ease;">✓ 保存済み</span>
-        </div>
-        <a id="downloadLink" class="download-link-btn" href="#" hidden>📥 PDFダウンロード</a>
-      </header>
-      <div class="editor-body">
-        <textarea id="markdownEditor" placeholder="ファイルを選択・ドラッグ、またはここにMarkdownを直接入力・編集してください..."></textarea>
-      </div>
-    </section>
-
-    <section class="panel preview">
-      <div class="preview-tabs">
-        <button type="button" class="preview-tab active" data-tab="md">MD プレビュー</button>
-        <button type="button" class="preview-tab" data-tab="pdf">PDF プレビュー</button>
-      </div>
-      <div class="preview-body">
-        <iframe id="mdPreviewFrame" class="preview-frame active" title="MD preview" sandbox="allow-scripts"></iframe>
-        <iframe id="pdfPreviewFrame" class="preview-frame" title="PDF preview"></iframe>
+      <div class="live-document">
+        <section class="source-panel" aria-label="Markdown editor">
+          <textarea id="markdownEditor" spellcheck="false" disabled placeholder="Markdown を選択してください"></textarea>
+          <footer class="editor-footer">
+            <label><input id="autoSaveToggle" type="checkbox" checked> 自動保存</label>
+            <span id="editorStats">0 文字 / 0 行</span>
+          </footer>
+        </section>
+        <section class="render-panel" aria-label="Live preview">
+          <iframe id="previewFrame" title="Markdown preview" sandbox=""></iframe>
+        </section>
       </div>
     </section>
   </main>
-  <script src="/prism.min.js"></script>
-  <script src="/app.js" type="module"></script>
+
+  <section class="batch-drawer" aria-label="Batch operations">
+    <div class="batch-heading">
+      <div>
+        <strong>選択した文書を一括処理</strong>
+        <small>本文は一件ずつ読み、実行前に差分件数を確認します。</small>
+      </div>
+      <span id="operationState">準備完了</span>
+    </div>
+    <label>検索<input id="batchFind" type="text" placeholder="置換する文字列"></label>
+    <label>置換<input id="batchReplace" type="text" placeholder="新しい文字列"></label>
+    <label class="case-option"><input id="caseSensitive" type="checkbox" checked> 大文字小文字を区別</label>
+    <button id="previewReplaceBtn" type="button">置換件数を確認</button>
+    <button id="applyReplaceBtn" class="danger" type="button" disabled>バックアップして置換</button>
+    <button id="exportSelectedBtn" class="primary" type="button">選択を PDF 出力</button>
+  </section>
+
+  <dialog id="batchResultDialog">
+    <form method="dialog">
+      <header><strong id="batchResultTitle">一括処理結果</strong><button value="close">閉じる</button></header>
+      <pre id="batchResultBody"></pre>
+    </form>
+  </dialog>
+
+  <script src="./vendor/mermaid.min.js"></script>
+  <script src="./app.js" type="module"></script>
 </body>
 </html>

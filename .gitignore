@@ -1,4 +1,11 @@
 /target/
+/wasm-renderer/target/
+/.cargo-target-installer/
+/installer-target/
+/.tools/
+/node_modules/
+/gen/
+/dist/
 /workdir/files/
 /workdir/jobs/
 *.log

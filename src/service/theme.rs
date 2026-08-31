@@ -1,11 +1,10 @@
-use std::path::Path;
-
 use html_escape::encode_text;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{AppError, Result},
     model::{PdfFormatOverride, RenderRequest},
+    theme_assets::EmbeddedTheme,
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -215,13 +214,13 @@ impl HeaderFooterConfig {
 }
 
 pub async fn load_theme_render_options(
-    theme_dir: &Path,
+    theme: &EmbeddedTheme,
     req: &RenderRequest,
 ) -> Result<ThemeRenderOptions> {
-    let mut config = load_theme_config(theme_dir).await?;
+    let mut config = load_theme_config(theme)?;
     apply_request_format(&mut config, req.format.as_ref())?;
     validate_config(&config)?;
-    let print_css = render_print_css(theme_dir, &config).await?;
+    let print_css = render_print_css(theme, &config, &req.theme)?;
     let print_options = build_print_options(&config, req);
     let document_options = build_document_options(&config, req);
     Ok(ThemeRenderOptions {
@@ -231,7 +230,10 @@ pub async fn load_theme_render_options(
     })
 }
 
-fn apply_request_format(config: &mut ThemeConfig, format: Option<&PdfFormatOverride>) -> Result<()> {
+fn apply_request_format(
+    config: &mut ThemeConfig,
+    format: Option<&PdfFormatOverride>,
+) -> Result<()> {
     let Some(format) = format else {
         return Ok(());
     };
@@ -305,24 +307,158 @@ fn apply_request_format(config: &mut ThemeConfig, format: Option<&PdfFormatOverr
 }
 
 fn clean_optional(value: &Option<String>) -> Option<String> {
-    value.as_ref().map(|item| item.trim()).filter(|item| !item.is_empty()).map(str::to_string)
+    value
+        .as_ref()
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .map(str::to_string)
 }
 
-async fn load_theme_config(theme_dir: &Path) -> Result<ThemeConfig> {
-    let path = theme_dir.join("theme.yaml");
-    let content = tokio::fs::read_to_string(&path).await?;
-    serde_yaml::from_str(&content)
+fn load_theme_config(theme: &EmbeddedTheme) -> Result<ThemeConfig> {
+    serde_yaml::from_str(theme.config)
         .map_err(|err| AppError::Conversion(format!("invalid theme.yaml: {err}")))
 }
 
-async fn render_print_css(theme_dir: &Path, config: &ThemeConfig) -> Result<String> {
-    let print = tokio::fs::read_to_string(theme_dir.join("print.css")).await?;
-    Ok(print
+fn render_print_css(
+    theme: &EmbeddedTheme,
+    config: &ThemeConfig,
+    theme_name: &str,
+) -> Result<String> {
+    let mut css = theme
+        .print
         .replace("{{page_size}}", &config.page.size)
         .replace("{{page_margin_top}}", &config.page.margin.top)
         .replace("{{page_margin_right}}", &config.page.margin.right)
         .replace("{{page_margin_bottom}}", &config.page.margin.bottom)
-        .replace("{{page_margin_left}}", &config.page.margin.left))
+        .replace("{{page_margin_left}}", &config.page.margin.left);
+    append_page_margin_css(&mut css, config, theme_name);
+    Ok(css)
+}
+
+fn append_page_margin_css(css: &mut String, config: &ThemeConfig, theme: &str) {
+    let default_pdf;
+    let pdf = match &config.pdf {
+        Some(pdf) => pdf,
+        None => {
+            default_pdf = PdfConfig::with_page_numbers(config.layout.page_number.unwrap_or(true));
+            &default_pdf
+        }
+    };
+
+    if !pdf.header.enabled && !pdf.footer.enabled {
+        return;
+    }
+
+    css.push_str("\n\n/* Edge/Chromium 131+: offline page headers and counters. */\n@page {\n");
+    append_margin_box(css, "top", &pdf.header, theme);
+    append_margin_box(css, "bottom", &pdf.footer, theme);
+    css.push_str("}\n");
+}
+
+fn append_margin_box(css: &mut String, edge: &str, config: &HeaderFooterConfig, theme: &str) {
+    if !config.enabled {
+        return;
+    }
+
+    let source = if config.page_numbers {
+        &config.format
+    } else {
+        &config.text
+    };
+    if source.is_empty() && !config.page_numbers {
+        return;
+    }
+
+    let source = source.replace("{theme}", theme);
+    let content = if config.page_numbers {
+        page_counter_content(&source)
+    } else {
+        css_string_content(&source)
+    };
+    let box_name = match (edge, config.align.as_str()) {
+        ("top", "left") => "top-left",
+        ("top", "center") => "top-center",
+        ("top", "right") => "top-right",
+        ("bottom", "left") => "bottom-left",
+        ("bottom", "center") => "bottom-center",
+        _ => "bottom-right",
+    };
+
+    css.push_str("  @");
+    css.push_str(box_name);
+    css.push_str(" {\n    content: ");
+    css.push_str(&content);
+    css.push_str(";\n    font-size: ");
+    css.push_str(&config.font_size);
+    css.push_str(";\n    color: ");
+    css.push_str(&config.color);
+    css.push_str(";\n    padding-left: ");
+    css.push_str(&config.padding_left);
+    css.push_str(";\n    padding-right: ");
+    css.push_str(&config.padding_right);
+    css.push_str(";\n  }\n");
+}
+
+fn page_counter_content(format: &str) -> String {
+    let mut out = String::with_capacity(format.len() + 32);
+    let mut cursor = 0;
+
+    while cursor < format.len() {
+        let remaining = &format[cursor..];
+        let page = remaining.find("{page}").map(|index| (index, "{page}"));
+        let total = remaining.find("{total}").map(|index| (index, "{total}"));
+        let next = match (page, total) {
+            (Some(page), Some(total)) => Some(if page.0 <= total.0 { page } else { total }),
+            (Some(page), None) => Some(page),
+            (None, Some(total)) => Some(total),
+            (None, None) => None,
+        };
+
+        let Some((offset, token)) = next else {
+            push_css_content_part(&mut out, &css_string_content(remaining));
+            break;
+        };
+        if offset > 0 {
+            push_css_content_part(&mut out, &css_string_content(&remaining[..offset]));
+        }
+        let counter = if token == "{page}" {
+            "counter(page)"
+        } else {
+            "counter(pages)"
+        };
+        push_css_content_part(&mut out, counter);
+        cursor += offset + token.len();
+    }
+
+    if out.is_empty() {
+        "\"\"".to_string()
+    } else {
+        out
+    }
+}
+
+fn push_css_content_part(out: &mut String, part: &str) {
+    if !out.is_empty() {
+        out.push(' ');
+    }
+    out.push_str(part);
+}
+
+fn css_string_content(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\r' => {}
+            '\n' => out.push_str("\\A "),
+            ch if ch.is_control() => out.push(' '),
+            ch => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn build_print_options(config: &ThemeConfig, req: &RenderRequest) -> PrintOptions {
@@ -362,9 +498,7 @@ fn build_print_options(config: &ThemeConfig, req: &RenderRequest) -> PrintOption
 fn build_document_options(config: &ThemeConfig, req: &RenderRequest) -> DocumentOptions {
     let format = req.format.as_ref();
     DocumentOptions {
-        cover_enabled: format
-            .and_then(|item| item.cover_enabled)
-            .unwrap_or(false),
+        cover_enabled: format.and_then(|item| item.cover_enabled).unwrap_or(false),
         toc_enabled: format
             .and_then(|item| item.toc_enabled)
             .unwrap_or_else(|| config.layout.toc.unwrap_or(false)),
@@ -483,9 +617,9 @@ fn validate_align(name: &str, value: &str) -> Result<()> {
 
 fn validate_css_color(name: &str, value: &str) -> Result<()> {
     let valid = !value.is_empty()
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'#' | b'(' | b')' | b',' | b'.' | b'%' | b' '));
+        && value.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'#' | b'(' | b')' | b',' | b'.' | b'%' | b' ')
+        });
     if valid {
         Ok(())
     } else {
@@ -545,4 +679,46 @@ fn default_footer_color() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_counter_content_maps_current_and_total_pages() {
+        assert_eq!(
+            page_counter_content("Page {page} of {total}"),
+            "\"Page \" counter(page) \" of \" counter(pages)"
+        );
+        assert_eq!(
+            page_counter_content("{page}/{total}"),
+            "counter(page) \"/\" counter(pages)"
+        );
+    }
+
+    #[test]
+    fn css_string_content_cannot_break_out_of_the_content_string() {
+        assert_eq!(
+            css_string_content("report\"} @page {\nnext"),
+            "\"report\\\"} @page {\\A next\""
+        );
+    }
+
+    #[test]
+    fn page_margin_css_uses_the_configured_footer_box() {
+        let config = ThemeConfig {
+            page: PageConfig::default(),
+            layout: LayoutConfig::default(),
+            pdf: Some(PdfConfig::with_page_numbers(true)),
+        };
+        let mut css = String::new();
+
+        append_page_margin_css(&mut css, &config, "jp-standard");
+
+        assert!(css.contains("@bottom-right"));
+        assert!(css.contains("content: counter(page) \" / \" counter(pages);"));
+        assert!(css.contains("font-size: 11px;"));
+        assert!(!css.contains("pageNumber"));
+    }
 }

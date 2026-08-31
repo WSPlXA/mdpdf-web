@@ -1,748 +1,552 @@
-const fileInput = document.querySelector("#fileInput");
-const fileLabel = document.querySelector("#fileLabel");
-const fileMeta = document.querySelector("#fileMeta");
-const themeSelect = document.querySelector("#themeSelect");
-const mermaidToggle = document.querySelector("#mermaidToggle");
-const strictToggle = document.querySelector("#strictToggle");
-const coverToggle = document.querySelector("#coverToggle");
-const tocToggle = document.querySelector("#tocToggle");
-const chapterBreakToggle = document.querySelector("#chapterBreakToggle");
-const diffToggle = document.querySelector("#diffToggle");
-const diffUploadContainer = document.querySelector("#diffUploadContainer");
-const diffFileInput = document.querySelector("#diffFileInput");
-const diffFileLabel = document.querySelector("#diffFileLabel");
-const docNameInput = document.querySelector("#docNameInput");
-const docCodeInput = document.querySelector("#docCodeInput");
-const docDateInput = document.querySelector("#docDateInput");
-const versionInput = document.querySelector("#versionInput");
-const ownerInput = document.querySelector("#ownerInput");
-const applyToCoverBtn = document.querySelector("#applyToCoverBtn");
-const pageSizeSelect = document.querySelector("#pageSizeSelect");
-const marginTopInput = document.querySelector("#marginTopInput");
-const marginRightInput = document.querySelector("#marginRightInput");
-const marginBottomInput = document.querySelector("#marginBottomInput");
-const marginLeftInput = document.querySelector("#marginLeftInput");
-const pageNumberToggle = document.querySelector("#pageNumberToggle");
-const footerFormatInput = document.querySelector("#footerFormatInput");
-const footerAlignSelect = document.querySelector("#footerAlignSelect");
-const headerToggle = document.querySelector("#headerToggle");
-const headerFormatInput = document.querySelector("#headerFormatInput");
-const headerAlignSelect = document.querySelector("#headerAlignSelect");
-const previewBtn = document.querySelector("#previewBtn");
-const convertBtn = document.querySelector("#convertBtn");
-const mdPreviewFrame = document.querySelector("#mdPreviewFrame");
-const pdfPreviewFrame = document.querySelector("#pdfPreviewFrame");
-const serverState = document.querySelector("#serverState");
-const downloadLink = document.querySelector("#downloadLink");
+import initWasm, { render_markdown_fast as renderMarkdownWasm } from "./wasm/mdpdf_wasm.js";
 
-const markdownEditor = document.querySelector("#markdownEditor");
-const toggleSidebarBtn = document.querySelector("#toggleSidebarBtn");
-const savedIndicator = document.querySelector("#savedIndicator");
-const shell = document.querySelector(".shell");
+const invoke = window.__TAURI__?.core?.invoke;
+const wasmReady = initWasm();
 
-let fileId = null;
-let currentJob = null;
-let shouldDownload = false;
-let activeTab = 'md';
-let compareMarkdownContent = "";
+const elements = Object.fromEntries([
+  "openFolderBtn", "refreshBtn", "workspacePath", "fileFilter", "selectAllFiles",
+  "selectionCount", "fileList", "activeFilename", "activeRelativePath", "dirtyState",
+  "reloadBtn", "saveBtn", "markdownEditor", "autoSaveToggle", "editorStats",
+  "settingsToggle", "settingsPanel", "themeSelect", "pageSizeSelect",
+  "mermaidToggle", "coverToggle", "tocToggle", "chapterBreakToggle", "previewFrame",
+  "operationState", "batchFind", "batchReplace", "caseSensitive",
+  "previewReplaceBtn", "applyReplaceBtn", "exportSelectedBtn", "batchResultDialog",
+  "batchResultTitle", "batchResultBody",
+].map((id) => [id, document.getElementById(id)]));
 
-// Default date formatting helper (YYYY/MM/DD)
-function getTodayString() {
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
-  return `${yyyy}/${mm}/${dd}`;
+const state = {
+  root: "",
+  documents: [],
+  selected: new Set(),
+  active: null,
+  filter: "",
+  lastBatchPreviewKey: "",
+  busy: false,
+};
+
+let previewTimer = 0;
+let saveTimer = 0;
+let previewSequence = 0;
+
+const mermaid = window.mermaid;
+if (mermaid) {
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    suppressErrorRendering: true,
+  });
 }
 
-// Default Japanese Cover Page template
-const defaultMarkdown = `# ＜ドキュメント名称＞
-
-## 表紙
-
-日本郵便株式会社
-【郵便物等事故申告処理システム】
-**＜ドキュメント名称＞**
-
-第1.0版
-
-- 初版 ： 2026年07月31日
-- 改版 ：　　　　年　　月　　日
-
----
-
-## 改版履歴
-
-| 項目             | 内容                         |
-| ---------------- | ---------------------------- |
-| システム名       | 郵便物等事故申告処理システム |
-| ID               | ＜BIPROGYドキュメントID＞    |
-| ドキュメント名称 | ＜ドキュメント名称＞         |
-
-### 更新情報
-
-| 項目   | 内容       |
-| ------ | ---------- |
-| 作成者 | BIPROGY    |
-| 作成日 | 2026/07/31 |
-| 更新者 |            |
-| 更新日 |            |
-
-### 改版履歴
-
-| 版数  | 改版内容 | 更新者  | 更新日     |
-| ----- | -------- | ------- | ---------- |
-| 01.00 | 初版     | BIPROGY | 2026/07/31 |`;
-
-const templateHeader = "## 表紙";
-
-// Automatically updates the cover page checkbox state based on editor content
-function updateCoverToggleState() {
-  const currentVal = markdownEditor.value;
-  coverToggle.checked = hasEditorCover();
-}
-
-function hasEditorCover() {
-  return markdownEditor.value.includes(templateHeader);
-}
-
-function insertCoverTemplate() {
-  const currentVal = markdownEditor.value;
-  if (!currentVal.includes(templateHeader)) {
-    // Determine the document name to dynamically customize template placeholders
-    let docName = docNameInput.value.trim() || fileLabel.textContent || "ドキュメント名称";
-    if (docName === "Markdownを選択") {
-      docName = "ドキュメント名称";
-    } else {
-      docName = docName.replace(/\.(md|markdown)$/i, "");
-    }
-    
-    // Replace the placeholders with actual document name
-    const customizedTemplate = defaultMarkdown.replaceAll("＜ドキュメント名称＞", docName);
-    markdownEditor.value = customizedTemplate + "\n\n---\n\n" + currentVal;
+function requireDesktop() {
+  if (typeof invoke !== "function") {
+    throw new Error("この画面は Tauri デスクトップアプリ内で実行してください");
   }
 }
 
-function removeCoverTemplate() {
-  const currentVal = markdownEditor.value;
-  if (currentVal.includes(templateHeader)) {
-    // Split by the first page break ---
-    const parts = currentVal.split(/\n---\n/);
-    if (parts.length > 2) {
-      // Remove both the Cover page and the Revision History page
-      parts.shift();
-      parts.shift();
-      markdownEditor.value = parts.join("\n---\n").trimStart();
-    } else if (parts.length > 1) {
-      parts.shift();
-      markdownEditor.value = parts.join("\n---\n").trimStart();
-    } else {
-      if (currentVal.startsWith(defaultMarkdown)) {
-        markdownEditor.value = currentVal.substring(defaultMarkdown.length).trimStart();
-      }
-    }
-  }
-}
-
-// Write control panel input fields into the Cover Page template inside editor
-function applyFieldsToCover() {
-  let markdown = markdownEditor.value;
-  if (!markdown.includes(templateHeader)) {
-    // If cover is not present, insert it first!
-    insertCoverTemplate();
-    markdown = markdownEditor.value;
-  }
-
-  const docName = docNameInput.value.trim() || "ドキュメント名称";
-  const docCode = docCodeInput.value.trim() || "＜BIPROGYドキュメントID＞";
-  const docDate = docDateInput.value.trim() || getTodayString();
-  const version = versionInput.value.trim() || "1.0";
-  const owner = ownerInput.value.trim() || "BIPROGY";
-
-  // Convert date (e.g. 2026/07/31) to Japanese format (e.g. 2026年07月31日)
-  const dateParts = docDate.split("/");
-  let jaDate = docDate;
-  if (dateParts.length === 3) {
-    jaDate = `${dateParts[0]}年${dateParts[1]}月${dateParts[2]}日`;
-  }
-
-  // Split by the page break separator to avoid modifying the main document text
-  const parts = markdown.split(/\n---\n/);
-  if (parts.length >= 2) {
-    // 1. Process Cover Page (parts[0])
-    const coverLines = parts[0].split("\n");
-    const updatedCoverLines = coverLines.map(line => {
-      if (line.trim().startsWith("# ") && !line.trim().startsWith("##")) {
-        return `# ${docName}`;
-      }
-      if (line.trim().startsWith("**") && line.trim().endsWith("**")) {
-        return `**${docName}**`;
-      }
-      if (/^第[0-9a-zA-Z\.-]+版$/.test(line.trim())) {
-        return `第${version}版`;
-      }
-      if (line.includes("初版") && line.includes("：") && line.includes("年")) {
-        return line.replace(/(-\s*初版\s*：\s*).*/, `$1${jaDate}`);
-      }
-      return line;
-    });
-    parts[0] = updatedCoverLines.join("\n");
-
-    // 2. Process Revision History Page (parts[1])
-    const historyLines = parts[1].split("\n");
-    const updatedHistoryLines = historyLines.map(line => {
-      if (line.includes("| ドキュメント名称 ")) {
-        return line.replace(/(\| ドキュメント名称\s*\|\s*)[^|]+(\s*\|)/, `$1${docName}$2`);
-      }
-      if (line.includes("| ID ")) {
-        return line.replace(/(\| ID\s*\|\s*)[^|]+(\s*\|)/, `$1${docCode}$2`);
-      }
-      if (line.includes("| 作成者 ")) {
-        return line.replace(/(\| 作成者\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
-      }
-      if (line.includes("| 作成日 ")) {
-        return line.replace(/(\| 作成日\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
-      }
-      if (line.includes("初版") && line.startsWith("|")) {
-        let temp = line.replace(/(\| )[0-9.]+(\s*\|\s*初版\s*\|)/, `$1${version}$2`);
-        temp = temp.replace(/(\| 初版\s*\|\s*)[^|]+(\s*\|)/, `$1${owner}$2`);
-        temp = temp.replace(/(\| 初版\s*\|\s*[^|]+\s*\|\s*)[^|]+(\s*\|)/, `$1${docDate}$2`);
-        return temp;
-      }
-      return line;
-    });
-    parts[1] = updatedHistoryLines.join("\n");
-
-    markdownEditor.value = parts.join("\n---\n");
-  }
-
-  updateCoverToggleState();
-}
-
-// Setup functions
-function setBusy(text) {
-  serverState.textContent = text;
-  previewBtn.disabled = true;
-  convertBtn.disabled = true;
-}
-
-function setReady() {
-  serverState.textContent = "準備完了";
-  previewBtn.disabled = !fileId && !markdownEditor.value;
-  convertBtn.disabled = !fileId && !markdownEditor.value;
-}
-
-function debounce(func, wait) {
-  let timeout;
-  return function(...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
-  };
-}
-
-function saveDraft() {
-  const draft = {
-    file_id: fileId,
-    filename: fileLabel.textContent,
-    file_meta: fileMeta.textContent,
-    markdown_content: markdownEditor.value,
-    theme: themeSelect.value,
-    render_mermaid: mermaidToggle.checked,
-    strict_mermaid: strictToggle.checked,
-    cover_enabled: coverToggle.checked,
-    toc_enabled: tocToggle.checked,
-    chapter_page_break: chapterBreakToggle.checked,
-    diff_enabled: diffToggle.checked,
-    compare_markdown_content: compareMarkdownContent,
-    diff_file_name: diffFileLabel.textContent,
-    doc_name: docNameInput.value,
-    doc_code: docCodeInput.value,
-    doc_date: docDateInput.value,
-    version: versionInput.value,
-    owner: ownerInput.value,
-    page_size: pageSizeSelect.value,
-    margin_top: marginTopInput.value,
-    margin_right: marginRightInput.value,
-    margin_bottom: marginBottomInput.value,
-    margin_left: marginLeftInput.value,
-    page_numbers: pageNumberToggle.checked,
-    footer_format: footerFormatInput.value,
-    footer_align: footerAlignSelect.value,
-    header_enabled: headerToggle.checked,
-    header_format: headerFormatInput.value,
-    header_align: headerAlignSelect.value,
-  };
-  localStorage.setItem("mdpdf_draft", JSON.stringify(draft));
-  
-  // Show saved indicator
-  savedIndicator.style.opacity = "1";
-  if (window.savedIndicatorTimeout) {
-    clearTimeout(window.savedIndicatorTimeout);
-  }
-  window.savedIndicatorTimeout = setTimeout(() => {
-    savedIndicator.style.opacity = "0";
-  }, 1500);
-}
-
-const debouncedSaveDraft = debounce(saveDraft, 500);
-const debouncedRefresh = debounce(async () => {
-  await refreshCurrentTab();
-}, 1000);
-
-async function refreshCurrentTab() {
-  if (activeTab === 'md') {
-    await updateMdPreview();
-  } else {
-    shouldDownload = false;
-    await convert();
-  }
-}
-
-previewBtn.disabled = true;
-convertBtn.disabled = true;
-
-// Register event listeners
-fileInput.addEventListener("change", async () => {
-  const file = fileInput.files?.[0];
-  if (!file) return;
-  await uploadFile(file);
-});
-
-previewBtn.addEventListener("click", async () => {
-  await refreshCurrentTab();
-});
-
-convertBtn.addEventListener("click", async () => {
-  shouldDownload = true;
-  await convert();
-});
-
-toggleSidebarBtn.addEventListener("click", () => {
-  shell.classList.toggle("collapsed-sidebar");
-  const isCollapsed = shell.classList.contains("collapsed-sidebar");
-  toggleSidebarBtn.textContent = isCollapsed ? "⚙️ 設定を展開" : "⚙️ 設定を非表示";
-});
-
-// Register draft saving, automatic compilation, and state synchronization listeners
-markdownEditor.addEventListener("input", () => {
-  updateCoverToggleState();
-  debouncedSaveDraft();
-  debouncedRefresh();
-});
-
-const configElements = [
-  themeSelect, mermaidToggle, strictToggle, tocToggle,
-  chapterBreakToggle, docNameInput, docCodeInput, docDateInput, versionInput, ownerInput, pageSizeSelect,
-  marginTopInput, marginRightInput, marginBottomInput, marginLeftInput, pageNumberToggle,
-  footerFormatInput, footerAlignSelect, headerToggle, headerFormatInput, headerAlignSelect
-];
-
-// Config elements change listeners (excluding coverToggle and diffToggle)
-configElements.forEach(elem => {
-  if (elem) {
-    if (elem.type === "checkbox" || elem.tagName === "SELECT") {
-      elem.addEventListener("change", async () => {
-        saveDraft();
-        await refreshCurrentTab();
-      });
-    } else {
-      elem.addEventListener("input", () => {
-        debouncedSaveDraft();
-        debouncedRefresh();
-      });
-    }
-  }
-});
-
-// Separate listener for coverToggle to handle template injection
-coverToggle.addEventListener("change", async () => {
-  if (coverToggle.checked) {
-    insertCoverTemplate();
-    applyFieldsToCover();
-  } else {
-    removeCoverTemplate();
-  }
-  saveDraft();
-  await refreshCurrentTab();
-});
-
-// Listener for diffToggle to show comparison file selector
-diffToggle.addEventListener("change", async () => {
-  if (diffToggle.checked) {
-    diffUploadContainer.style.display = "block";
-  } else {
-    diffUploadContainer.style.display = "none";
-    compareMarkdownContent = "";
-    diffFileLabel.textContent = "比較対象の旧版ファイルを選択";
-    diffFileInput.value = "";
-  }
-  saveDraft();
-  await refreshCurrentTab();
-});
-
-// Listener for diffFileInput load and sync
-diffFileInput.addEventListener("change", async () => {
-  const file = diffFileInput.files?.[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    compareMarkdownContent = e.target.result;
-    diffFileLabel.textContent = `旧版: ${file.name}`;
-    saveDraft();
-    await refreshCurrentTab();
-  };
-  reader.readAsText(file);
-});
-
-// One-click write sidebar fields into cover page template in the editor
-applyToCoverBtn.addEventListener("click", async () => {
-  applyFieldsToCover();
-  saveDraft();
-  await refreshCurrentTab();
-});
-
-// Register paste event for clipboard images
-markdownEditor.addEventListener("paste", async (e) => {
-  const items = e.clipboardData?.items;
-  if (!items) return;
-  
-  for (const item of items) {
-    if (item.type.startsWith("image/")) {
-      e.preventDefault(); // Stop normal text pasting
-      const file = item.getAsFile();
-      if (!file) continue;
-      
-      setBusy("画像を処理中...");
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64Url = event.target.result;
-        const markdownImage = `\n![image](${base64Url})\n`;
-        insertTextAtCursor(markdownEditor, markdownImage);
-        saveDraft();
-        await refreshCurrentTab();
-      };
-      reader.readAsDataURL(file);
-      break;
-    }
-  }
-});
-
-// Register drag and drop events for editor textarea
-markdownEditor.addEventListener("dragenter", (e) => {
-  e.preventDefault();
-  markdownEditor.classList.add("drag-over");
-});
-
-markdownEditor.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  markdownEditor.classList.add("drag-over");
-});
-
-markdownEditor.addEventListener("dragleave", (e) => {
-  e.preventDefault();
-  markdownEditor.classList.remove("drag-over");
-});
-
-markdownEditor.addEventListener("drop", async (e) => {
-  e.preventDefault();
-  markdownEditor.classList.remove("drag-over");
-  
-  const files = e.dataTransfer?.files;
-  if (!files || files.length === 0) return;
-  
-  const file = files[0];
-  
-  if (file.type.startsWith("image/")) {
-    setBusy("画像を処理中...");
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64Url = event.target.result;
-      const markdownImage = `\n![image](${base64Url})\n`;
-      insertTextAtCursor(markdownEditor, markdownImage);
-      saveDraft();
-      await refreshCurrentTab();
-    };
-    reader.readAsDataURL(file);
-  } else if (file.name.endsWith(".md") || file.name.endsWith(".markdown")) {
-    await uploadFile(file);
-  }
-});
-
-function insertTextAtCursor(textarea, text) {
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const val = textarea.value;
-  textarea.value = val.substring(0, start) + text + val.substring(end);
-  textarea.selectionStart = textarea.selectionEnd = start + text.length;
-  textarea.focus();
-}
-
-async function loadDraft() {
-  const draftStr = localStorage.getItem("mdpdf_draft");
-  const defaultDate = getTodayString();
-  if (!draftStr) {
-    docDateInput.value = defaultDate;
-    return;
-  }
+async function call(command, args = {}) {
+  requireDesktop();
   try {
-    const draft = JSON.parse(draftStr);
-    
-    // Restore file info
-    fileId = draft.file_id || null;
-    fileLabel.textContent = draft.filename || "Markdownを選択";
-    fileMeta.textContent = draft.file_meta || ".md / .markdown、最大 10 MiB";
-    
-    // Restore editor content
-    markdownEditor.value = draft.markdown_content || "";
-    
-    // Restore options
-    const loadedTheme = draft.theme || "modern-tech";
-    const hasThemeOption = Array.from(themeSelect.options).some(o => o.value === loadedTheme);
-    themeSelect.value = hasThemeOption ? loadedTheme : (themeSelect.options[0]?.value || "modern-tech");
-    mermaidToggle.checked = draft.render_mermaid !== false;
-    strictToggle.checked = !!draft.strict_mermaid;
-    coverToggle.checked = !!draft.cover_enabled;
-    tocToggle.checked = !!draft.toc_enabled;
-    chapterBreakToggle.checked = !!draft.chapter_page_break;
-    
-    diffToggle.checked = !!draft.diff_enabled;
-    compareMarkdownContent = draft.compare_markdown_content || "";
-    diffFileLabel.textContent = draft.diff_file_name || "比較対象の旧版ファイルを選択";
-    if (diffToggle.checked) {
-      diffUploadContainer.style.display = "block";
-    } else {
-      diffUploadContainer.style.display = "none";
-    }
-
-    docNameInput.value = draft.doc_name || "";
-    docCodeInput.value = draft.doc_code || "";
-    docDateInput.value = draft.doc_date || defaultDate;
-    versionInput.value = draft.version || "";
-    ownerInput.value = draft.owner || "";
-    pageSizeSelect.value = draft.page_size || "A4";
-    marginTopInput.value = draft.margin_top || "20mm";
-    marginRightInput.value = draft.margin_right || "18mm";
-    marginBottomInput.value = draft.margin_bottom || "18mm";
-    marginLeftInput.value = draft.margin_left || "18mm";
-    pageNumberToggle.checked = draft.page_numbers !== false;
-    footerFormatInput.value = draft.footer_format || "{page} / {total}";
-    footerAlignSelect.value = draft.footer_align || "right";
-    headerToggle.checked = !!draft.header_enabled;
-    headerFormatInput.value = draft.header_format || "";
-    headerAlignSelect.value = draft.header_align || "left";
-    
-    // Synchronize cover checkbox state with loaded editor content
-    updateCoverToggleState();
-    
-    // Enable/disable actions
-    if (fileId || markdownEditor.value) {
-      previewBtn.disabled = false;
-      convertBtn.disabled = false;
-      
-      // Auto trigger preview on load
-      await refreshCurrentTab();
-    }
-  } catch (e) {
-    console.error("Failed to load draft:", e);
+    return await invoke(command, args);
+  } catch (error) {
+    const message = typeof error === "string" ? error : (error?.message || String(error));
+    setStatus(message, true);
+    throw new Error(message);
   }
 }
 
-async function uploadFile(file) {
-  setBusy("アップロード中...");
-  downloadLink.hidden = true;
-  downloadLink.removeAttribute("href");
-  appendLog(`upload ${file.name}`);
+async function chooseWorkspace() {
+  if (!(await flushDirty())) return;
+  setStatus("フォルダを読み込み中…");
+  const snapshot = await call("choose_workspace");
+  if (snapshot) applySnapshot(snapshot);
+  setStatus("準備完了");
+}
 
-  // Auto-extract filename as document name
-  const nameWithoutExt = file.name.replace(/\.(md|markdown)$/i, "");
-  docNameInput.value = nameWithoutExt;
-  docDateInput.value = getTodayString();
+async function refreshWorkspace({ quiet = false } = {}) {
+  if (!state.root || state.busy) return;
+  if (!quiet) setStatus("一覧を更新中…");
+  const snapshot = await call("scan_workspace");
+  if (snapshot) {
+    const activeEntry = state.active && snapshot.documents.find((doc) => doc.path === state.active.path);
+    applySnapshot(snapshot);
+    if (activeEntry && !state.active.dirty && activeEntry.modifiedMs !== state.active.modifiedMs) {
+      await openDocument(activeEntry.path, { force: true });
+    }
+  }
+  if (!quiet) setStatus("準備完了");
+}
 
-  // Read file contents as text and load into editor
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    markdownEditor.value = e.target.result;
-    
-    // Sync checkbox state for the uploaded file
-    updateCoverToggleState();
-    
-    // Automatically preview based on active tab
-    await refreshCurrentTab();
-    saveDraft();
+function applySnapshot(snapshot) {
+  state.root = snapshot.root;
+  state.documents = snapshot.documents;
+  const validPaths = new Set(snapshot.documents.map((doc) => doc.path));
+  state.selected = new Set([...state.selected].filter((path) => validPaths.has(path)));
+  elements.workspacePath.textContent = snapshot.root;
+  elements.workspacePath.title = snapshot.root;
+  renderFileList();
+}
+
+function visibleDocuments() {
+  const needle = state.filter.trim().toLocaleLowerCase();
+  return needle
+    ? state.documents.filter((doc) => doc.relativePath.toLocaleLowerCase().includes(needle))
+    : state.documents;
+}
+
+function renderFileList() {
+  const visible = visibleDocuments();
+  elements.fileList.replaceChildren();
+  if (!visible.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = state.root ? "Markdown ファイルがありません。" : "";
+    elements.fileList.append(empty);
+  }
+  const fragment = document.createDocumentFragment();
+  for (const documentEntry of visible) {
+    const row = document.createElement("div");
+    row.className = "file-row";
+    row.classList.toggle("active", state.active?.path === documentEntry.path);
+    row.setAttribute("role", "option");
+    row.title = documentEntry.relativePath;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.selected.has(documentEntry.path);
+    checkbox.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => toggleSelection(documentEntry.path, checkbox.checked));
+
+    const text = document.createElement("span");
+    const name = document.createElement("strong");
+    const relative = document.createElement("small");
+    name.textContent = documentEntry.filename;
+    relative.textContent = `${documentEntry.relativePath} · ${formatBytes(documentEntry.size)}`;
+    text.append(name, relative);
+    row.append(checkbox, text);
+    row.addEventListener("click", () => openDocument(documentEntry.path));
+    fragment.append(row);
+  }
+  elements.fileList.append(fragment);
+  updateSelectionState();
+}
+
+function toggleSelection(path, selected) {
+  if (selected) state.selected.add(path);
+  else state.selected.delete(path);
+  state.lastBatchPreviewKey = "";
+  elements.applyReplaceBtn.disabled = true;
+  updateSelectionState();
+}
+
+function updateSelectionState() {
+  const visible = visibleDocuments();
+  const selectedVisible = visible.filter((doc) => state.selected.has(doc.path)).length;
+  elements.selectionCount.textContent = `${state.selected.size} / ${state.documents.length}`;
+  elements.selectAllFiles.checked = visible.length > 0 && selectedVisible === visible.length;
+  elements.selectAllFiles.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
+}
+
+async function openDocument(path, { force = false } = {}) {
+  if (!force && state.active?.path === path) return;
+  if (!force && !(await flushDirty())) return;
+  setStatus("文書を読み込み中…");
+  const result = await call("read_document", { request: { path } });
+  const entry = state.documents.find((doc) => doc.path === path);
+  state.active = {
+    path: result.path,
+    relativePath: entry?.relativePath || result.path,
+    filename: entry?.filename || result.path.split(/[\\/]/).pop(),
+    content: result.content,
+    modifiedMs: result.modifiedMs,
+    dirty: false,
   };
-  reader.readAsText(file);
-
-  const form = new FormData();
-  form.append("file", file);
-  const response = await fetchJson("/api/files", { method: "POST", body: form });
-  fileId = response.file_id;
-  fileLabel.textContent = response.filename;
-  fileMeta.textContent = `${Math.round(response.size / 1024)} KiB`;
-  saveDraft();
-  setReady();
+  elements.markdownEditor.value = result.content;
+  elements.markdownEditor.disabled = false;
+  elements.saveBtn.disabled = false;
+  elements.reloadBtn.disabled = false;
+  elements.activeFilename.textContent = state.active.filename;
+  elements.activeRelativePath.textContent = state.active.relativePath;
+  renderFileList();
+  updateEditorStats();
+  setDirtyState("保存済み", false);
+  await updatePreview();
+  setStatus("準備完了");
 }
 
-async function convert() {
-  if (!fileId && !markdownEditor.value) return;
-  setBusy("処理待ち...");
-  downloadLink.hidden = true;
-  const response = await fetchJson("/api/convert", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(renderPayload()),
-  });
-  currentJob = response.job_id;
-  appendLog(`job ${currentJob} queued`);
-  pollJob();
-}
-
-async function pollJob() {
-  if (!currentJob) return;
-  const job = await fetchJson(`/api/jobs/${currentJob}`);
-  appendLogs(job.logs.slice(-2));
-
-  if (job.status === "succeeded") {
-    downloadLink.href = job.pdf_url;
-    downloadLink.hidden = false;
-    pdfPreviewFrame.removeAttribute("srcdoc");
-    pdfPreviewFrame.src = job.pdf_url + "?inline=true&t=" + Date.now();
-    
-    if (shouldDownload) {
-      const filename = fileLabel.textContent !== "Markdownを選択" ? fileLabel.textContent.replace(/\.md$/i, ".pdf") : "document.pdf";
-      triggerDownload(job.pdf_url, filename);
-    }
-    
-    appendLogs(job.warnings.map((item) => `warning: ${item}`));
-    setReady();
-    return;
+async function saveActive() {
+  if (!state.active?.dirty) return true;
+  clearTimeout(saveTimer);
+  try {
+    setDirtyState("保存中…", false);
+    const result = await call("save_document", {
+      request: {
+        path: state.active.path,
+        content: elements.markdownEditor.value,
+        expectedModifiedMs: state.active.modifiedMs,
+      },
+    });
+    state.active.content = elements.markdownEditor.value;
+    state.active.modifiedMs = result.modifiedMs;
+    state.active.dirty = false;
+    setDirtyState("保存済み", false);
+    return true;
+  } catch (error) {
+    setDirtyState("保存失敗", true);
+    return false;
   }
+}
 
-  if (job.status === "failed") {
-    appendLog(job.error_message || "job failed", true);
-    setReady();
-    return;
+async function flushDirty() {
+  if (!state.active?.dirty) return true;
+  if (elements.autoSaveToggle.checked) return saveActive();
+  if (!window.confirm("現在の変更を保存してから移動しますか？")) return false;
+  return saveActive();
+}
+
+function markDirty() {
+  if (!state.active) return;
+  state.active.dirty = true;
+  setDirtyState("未保存", true);
+  updateEditorStats();
+  clearTimeout(previewTimer);
+  previewTimer = window.setTimeout(updatePreview, 120);
+  if (elements.autoSaveToggle.checked) {
+    clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(saveActive, 850);
   }
-
-  window.setTimeout(pollJob, 1000);
 }
 
-function triggerDownload(url, filename) {
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
-function renderPayload() {
+function renderRequest(content = null, filename = null) {
   return {
-    file_id: fileId,
-    markdown_content: markdownEditor.value,
-    compare_markdown_content: diffToggle.checked ? compareMarkdownContent : null,
-    filename: fileLabel.textContent !== "Markdownを選択" ? fileLabel.textContent : "document.md",
-    theme: themeSelect.value,
-    render_mermaid: mermaidToggle.checked,
-    strict_mermaid: strictToggle.checked,
-    format: formatPayload(),
+    source_path: state.active?.path || null,
+    markdown_content: content,
+    compare_markdown_content: null,
+    filename,
+    theme: elements.themeSelect.value,
+    render_mermaid: elements.mermaidToggle.checked,
+    strict_mermaid: false,
+    format: {
+      cover_enabled: elements.coverToggle.checked,
+      toc_enabled: elements.tocToggle.checked,
+      chapter_page_break: elements.chapterBreakToggle.checked,
+      page_size: elements.pageSizeSelect.value,
+      page_numbers: true,
+    },
   };
 }
 
-function formatPayload() {
-  return compactObject({
-    cover_enabled: coverToggle.checked && !hasEditorCover(),
-    toc_enabled: tocToggle.checked,
-    chapter_page_break: chapterBreakToggle.checked,
-    doc_name: cleanValue(docNameInput.value),
-    doc_code: cleanValue(docCodeInput.value),
-    doc_date: cleanValue(docDateInput.value),
-    version: cleanValue(versionInput.value),
-    owner: cleanValue(ownerInput.value),
-    page_size: cleanValue(pageSizeSelect.value),
-    margin_top: cleanValue(marginTopInput.value),
-    margin_right: cleanValue(marginRightInput.value),
-    margin_bottom: cleanValue(marginBottomInput.value),
-    margin_left: cleanValue(marginLeftInput.value),
-    page_numbers: pageNumberToggle.checked,
-    footer_format: cleanValue(footerFormatInput.value),
-    footer_align: cleanValue(footerAlignSelect.value),
-    header_enabled: headerToggle.checked,
-    header_format: cleanValue(headerFormatInput.value),
-    header_align: headerAlignSelect.value,
-  });
-}
-
-function compactObject(source) {
-  const result = {};
-  for (const [key, value] of Object.entries(source)) {
-    if (value !== "" && value !== null && value !== undefined) result[key] = value;
+async function renderPreviewWithWasm(content, filename) {
+  await wasmReady;
+  const output = renderMarkdownWasm(
+    content,
+    filename || "document.md",
+    elements.themeSelect.value,
+    elements.mermaidToggle.checked,
+    undefined,
+    elements.coverToggle.checked,
+    elements.tocToggle.checked,
+    elements.chapterBreakToggle.checked,
+    elements.pageSizeSelect.value,
+  );
+  let result;
+  try {
+    result = {
+      html: output.take_html(),
+    };
+  } finally {
+    output.free();
+  }
+  if (state.active?.path && result.html.includes("<img")) {
+    const images = await call("inline_preview_images", {
+      request: { sourcePath: state.active.path, html: result.html },
+    });
+    result.html = images.html;
   }
   return result;
 }
 
-function cleanValue(value) {
-  return `${value ?? ""}`.trim();
-}
-
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload.error || `${response.status} ${response.statusText}`;
-    appendLog(message, true);
-    setReady();
-    throw new Error(message);
+async function renderEmbeddedMermaid(html) {
+  if (!elements.mermaidToggle.checked) return { html, warnings: [] };
+  const documentView = new DOMParser().parseFromString(html, "text/html");
+  const diagrams = [...documentView.querySelectorAll(".mermaid")];
+  if (!diagrams.length) return { html, warnings: [] };
+  if (!mermaid) {
+    return { html, warnings: ["内蔵 Mermaid ランタイムを読み込めません"] };
   }
-  return payload;
-}
 
-function appendLogs(items) {
-  for (const item of items || []) appendLog(item);
-}
-
-function appendLog(text, error = false) {
-  if (error) {
-    console.error(text);
-    serverState.textContent = text;
-    serverState.style.color = "var(--danger)";
-  } else {
-    console.log(text);
-    serverState.style.color = "";
-  }
-}
-
-// Tab switching
-document.querySelectorAll('.preview-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const tab = btn.dataset.tab;
-    if (tab === activeTab) return;
-    activeTab = tab;
-    document.querySelectorAll('.preview-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    document.querySelectorAll('.preview-frame').forEach(f => f.classList.toggle('active', f.id === `${tab}PreviewFrame`));
-    if (tab === 'md') {
-      updateMdPreview();
-    } else {
-      shouldDownload = false;
-      convert();
+  const warnings = [];
+  const sequence = ++previewSequence;
+  for (let index = 0; index < diagrams.length; index += 1) {
+    const diagram = diagrams[index];
+    try {
+      const id = `mdpdf-mermaid-${sequence}-${index}`;
+      const { svg } = await mermaid.render(id, diagram.textContent || "");
+      const rendered = documentView.createElement("div");
+      rendered.className = "mermaid-rendered";
+      rendered.innerHTML = svg;
+      diagram.replaceWith(rendered);
+    } catch (error) {
+      const message = error?.message || String(error);
+      const errorBlock = documentView.createElement("pre");
+      errorBlock.className = "diagram-error";
+      errorBlock.textContent = `Mermaid: ${message}`;
+      diagram.replaceWith(errorBlock);
+      warnings.push(`Mermaid ${index + 1}: ${message}`);
     }
+  }
+  return {
+    html: `<!doctype html>\n${documentView.documentElement.outerHTML}`,
+    warnings,
+  };
+}
+
+async function updatePreview() {
+  if (!state.active) return;
+  const revision = elements.markdownEditor.value;
+  try {
+    let result;
+    try {
+      result = await renderPreviewWithWasm(revision, state.active.filename);
+    } catch (wasmError) {
+      console.error("WASM preview failed; using native renderer", wasmError);
+      result = await call("render_preview", {
+        request: renderRequest(revision, state.active.filename),
+      });
+    }
+    if (revision !== elements.markdownEditor.value) return;
+    const renderedMermaid = await renderEmbeddedMermaid(result.html);
+    if (revision !== elements.markdownEditor.value) return;
+    elements.previewFrame.srcdoc = renderedMermaid.html;
+  } catch {
+    setStatus("プレビューを更新できません", true);
+  }
+}
+
+function selectedPaths() {
+  return [...state.selected];
+}
+
+function batchKey() {
+  return JSON.stringify([
+    selectedPaths().sort(),
+    elements.batchFind.value,
+    elements.batchReplace.value,
+    elements.caseSensitive.checked,
+  ]);
+}
+
+async function previewBatchReplace() {
+  const paths = selectedPaths();
+  if (!paths.length) return setStatus("一括処理する文書を選択してください", true);
+  if (!elements.batchFind.value) return setStatus("検索文字列を入力してください", true);
+  setBusy(true, "置換件数を計算中…");
+  try {
+    const result = await call("batch_replace", {
+      request: batchRequest(paths, true),
+    });
+    state.lastBatchPreviewKey = batchKey();
+    elements.applyReplaceBtn.disabled = result.filesChanged === 0;
+    showBatchResult("置換プレビュー", describeBatchResult(result));
+  } finally {
+    setBusy(false, "準備完了");
+  }
+}
+
+async function applyBatchReplace() {
+  if (state.lastBatchPreviewKey !== batchKey()) {
+    return setStatus("条件が変わりました。先に置換件数を再確認してください", true);
+  }
+  const paths = selectedPaths();
+  if (!window.confirm(`${paths.length} 件をバックアップして置換します。続行しますか？`)) return;
+  if (!(await flushDirty())) return;
+  setBusy(true, "バックアップして置換中…");
+  try {
+    const result = await call("batch_replace", {
+      request: batchRequest(paths, false),
+    });
+    state.lastBatchPreviewKey = "";
+    elements.applyReplaceBtn.disabled = true;
+    showBatchResult("置換完了", describeBatchResult(result));
+    await refreshWorkspace({ quiet: true });
+    if (state.active && paths.includes(state.active.path)) {
+      await openDocument(state.active.path, { force: true });
+    }
+  } finally {
+    setBusy(false, "準備完了");
+  }
+}
+
+function batchRequest(paths, dryRun) {
+  return {
+    paths,
+    find: elements.batchFind.value,
+    replace: elements.batchReplace.value,
+    caseSensitive: elements.caseSensitive.checked,
+    dryRun,
+  };
+}
+
+function describeBatchResult(result) {
+  const lines = [
+    `対象: ${result.filesScanned} 件`,
+    `変更: ${result.filesChanged} 件 / ${result.replacements} 箇所`,
+  ];
+  if (result.backupDir) lines.push(`バックアップ: ${result.backupDir}`);
+  for (const change of result.changes.slice(0, 200)) {
+    lines.push(`  ${change.relativePath}: ${change.replacements} 箇所`);
+  }
+  if (result.changes.length > 200) lines.push(`  …ほか ${result.changes.length - 200} 件`);
+  if (result.failures.length) {
+    lines.push("", "失敗:", ...result.failures);
+  }
+  return lines.join("\n");
+}
+
+async function exportSelected() {
+  const paths = selectedPaths();
+  if (!paths.length) return setStatus("PDF 出力する文書を選択してください", true);
+  if (!(await flushDirty())) return;
+  const outputDir = await call("choose_export_folder");
+  if (!outputDir) return;
+  setBusy(true, `${paths.length} 件を順番に PDF 出力中…`);
+  try {
+    const result = await call("export_documents", {
+      request: {
+        paths,
+        outputDir,
+        render: renderRequest(null, null),
+      },
+    });
+    const lines = [
+      `成功: ${result.succeeded} 件`,
+      `失敗: ${result.failed} 件`,
+      `出力先: ${outputDir}`,
+      "",
+      ...result.files.map((file) => file.error
+        ? `NG  ${file.sourcePath}: ${file.error}`
+        : `OK  ${file.outputPath}`),
+    ];
+    showBatchResult("PDF 一括出力", lines.join("\n"));
+  } finally {
+    setBusy(false, "準備完了");
+  }
+}
+
+function showBatchResult(title, body) {
+  elements.batchResultTitle.textContent = title;
+  elements.batchResultBody.textContent = body;
+  elements.batchResultDialog.showModal();
+}
+
+function setBusy(busy, text) {
+  state.busy = busy;
+  elements.operationState.textContent = text;
+  elements.previewReplaceBtn.disabled = busy;
+  elements.exportSelectedBtn.disabled = busy;
+  if (busy) elements.applyReplaceBtn.disabled = true;
+}
+
+function setStatus(text, isError = false) {
+  elements.operationState.textContent = text;
+  elements.operationState.classList.toggle("error", isError);
+}
+
+function setDirtyState(text, isDirty) {
+  elements.dirtyState.textContent = text;
+  elements.dirtyState.classList.toggle("dirty", isDirty);
+}
+
+function updateEditorStats() {
+  const value = elements.markdownEditor.value;
+  const lines = value ? value.split("\n").length : 0;
+  elements.editorStats.textContent = `${value.length.toLocaleString()} 文字 / ${lines.toLocaleString()} 行`;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+}
+
+function loadSettings() {
+  try {
+    const value = JSON.parse(localStorage.getItem("mdpdf-desktop-settings") || "{}");
+    elements.themeSelect.value = value.theme || "modern-tech";
+    elements.pageSizeSelect.value = value.pageSize || "A4";
+    elements.mermaidToggle.checked = value.mermaid === true;
+    elements.coverToggle.checked = value.cover === true;
+    elements.tocToggle.checked = value.toc === true;
+    elements.chapterBreakToggle.checked = value.chapterBreak === true;
+  } catch {
+    localStorage.removeItem("mdpdf-desktop-settings");
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem("mdpdf-desktop-settings", JSON.stringify({
+    theme: elements.themeSelect.value,
+    pageSize: elements.pageSizeSelect.value,
+    mermaid: elements.mermaidToggle.checked,
+    cover: elements.coverToggle.checked,
+    toc: elements.tocToggle.checked,
+    chapterBreak: elements.chapterBreakToggle.checked,
+  }));
+  updatePreview();
+}
+
+elements.openFolderBtn.addEventListener("click", chooseWorkspace);
+elements.refreshBtn.addEventListener("click", () => refreshWorkspace());
+elements.fileFilter.addEventListener("input", () => {
+  state.filter = elements.fileFilter.value;
+  renderFileList();
+});
+elements.selectAllFiles.addEventListener("change", () => {
+  for (const doc of visibleDocuments()) {
+    if (elements.selectAllFiles.checked) state.selected.add(doc.path);
+    else state.selected.delete(doc.path);
+  }
+  state.lastBatchPreviewKey = "";
+  elements.applyReplaceBtn.disabled = true;
+  renderFileList();
+});
+elements.markdownEditor.addEventListener("input", markDirty);
+elements.saveBtn.addEventListener("click", saveActive);
+elements.reloadBtn.addEventListener("click", async () => {
+  if (!state.active) return;
+  if (state.active.dirty && !window.confirm("未保存の変更を破棄して再読み込みしますか？")) return;
+  await openDocument(state.active.path, { force: true });
+});
+elements.settingsToggle.addEventListener("click", () => {
+  elements.settingsPanel.hidden = !elements.settingsPanel.hidden;
+});
+for (const control of [
+  elements.themeSelect, elements.pageSizeSelect, elements.mermaidToggle,
+  elements.coverToggle, elements.tocToggle, elements.chapterBreakToggle,
+]) {
+  control.addEventListener("change", saveSettings);
+}
+for (const control of [elements.batchFind, elements.batchReplace, elements.caseSensitive]) {
+  control.addEventListener("input", () => {
+    state.lastBatchPreviewKey = "";
+    elements.applyReplaceBtn.disabled = true;
   });
+  control.addEventListener("change", () => {
+    state.lastBatchPreviewKey = "";
+    elements.applyReplaceBtn.disabled = true;
+  });
+}
+elements.previewReplaceBtn.addEventListener("click", previewBatchReplace);
+elements.applyReplaceBtn.addEventListener("click", applyBatchReplace);
+elements.exportSelectedBtn.addEventListener("click", exportSelected);
+document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    saveActive();
+  }
+});
+window.addEventListener("beforeunload", (event) => {
+  if (state.active?.dirty) event.preventDefault();
 });
 
-async function updateMdPreview() {
-  if (!fileId && !markdownEditor.value) return;
-  try {
-    const response = await fetchJson("/api/preview", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(renderPayload()),
-    });
-    mdPreviewFrame.srcdoc = response.html;
-    appendLogs(response.warnings);
-  } catch (e) {
-    // error already handled by fetchJson
-  }
-}
-
-// Initial call to load saved draft on page load
-loadDraft();
+loadSettings();
+window.setInterval(() => refreshWorkspace({ quiet: true }).catch(() => {}), 3000);

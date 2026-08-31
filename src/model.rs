@@ -1,48 +1,8 @@
-use std::path::PathBuf;
-
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize)]
-pub struct UploadedFile {
-    pub id: String,
-    pub filename: String,
-    #[serde(skip_serializing)]
-    pub path: PathBuf,
-    pub size: u64,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum JobStatus {
-    Pending,
-    Processing,
-    Succeeded,
-    Failed,
-}
-
-#[derive(Clone, Serialize)]
-pub struct ConvertJob {
-    pub id: String,
-    pub file_id: String,
-    pub filename: String,
-    pub theme: String,
-    pub status: JobStatus,
-    pub pdf_url: Option<String>,
-    pub warnings: Vec<String>,
-    pub logs: Vec<String>,
-    pub error_message: Option<String>,
-    pub created_at: DateTime<Utc>,
-    #[serde(skip_serializing)]
-    pub pdf_path: Option<PathBuf>,
-    #[serde(skip_serializing)]
-    pub html_path: Option<PathBuf>,
-}
-
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct RenderRequest {
-    pub file_id: Option<String>,
+    pub source_path: Option<String>,
     pub markdown_content: Option<String>,
     pub compare_markdown_content: Option<String>,
     pub filename: Option<String>,
@@ -78,23 +38,10 @@ pub struct PdfFormatOverride {
 }
 
 #[derive(Serialize)]
-pub struct FileResponse {
-    pub file_id: String,
-    pub filename: String,
-    pub size: u64,
-}
-
-#[derive(Serialize)]
 pub struct PreviewResponse {
     pub html: String,
     pub warnings: Vec<String>,
     pub logs: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct ConvertResponse {
-    pub job_id: String,
-    pub status: JobStatus,
 }
 
 fn default_theme() -> String {

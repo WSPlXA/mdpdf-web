@@ -1,7 +1,8 @@
-use std::path::Path;
+use std::{path::Path, sync::LazyLock};
 
 use comrak::{markdown_to_html, Options};
 use html_escape::encode_text;
+use memchr::memchr;
 use regex::Regex;
 use similar::{ChangeTag, TextDiff};
 use uuid::Uuid;
@@ -9,11 +10,9 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, Result},
     model::RenderRequest,
-    service::{
-        mermaid::render_mermaid_svg,
-        theme::{load_theme_render_options, DocumentOptions, PrintOptions},
-    },
+    service::theme::{load_theme_render_options, DocumentOptions, PrintOptions},
     state::AppState,
+    theme_assets::{embedded_theme, EmbeddedTheme, PRISM_CSS},
 };
 
 pub struct RenderedDocument {
@@ -24,8 +23,8 @@ pub struct RenderedDocument {
 }
 
 struct MermaidBlock {
-    placeholder: String,
-    source: String,
+    source_start: usize,
+    source_end: usize,
 }
 
 struct DiffMarkers {
@@ -35,17 +34,35 @@ struct DiffMarkers {
     del_end: String,
 }
 
+static TOC_HEADING: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?s)<h([23])(?:\s[^>]*)?>(.*?)</h[23]>"#).expect("valid regex"));
+static TOC_ID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\bid="([^"]+)""#).expect("valid regex"));
+static TOC_ANCHOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?s)<a\b[^>]*></a>"#).expect("valid regex"));
+static RENDER_OPTIONS: LazyLock<Options<'static>> = LazyLock::new(|| {
+    let mut options = Options::default();
+    options.extension.table = true;
+    options.extension.autolink = true;
+    options.extension.strikethrough = true;
+    options.extension.tasklist = true;
+    options.extension.header_ids = Some("h-".to_string());
+    options.render.unsafe_ = false;
+    options
+});
+
 pub async fn render_markdown_file(
-    state: &AppState,
+    _state: &AppState,
     markdown: &str,
     filename: &str,
     req: &RenderRequest,
     render_dir: Option<&Path>,
 ) -> Result<RenderedDocument> {
     validate_theme_name(&req.theme)?;
-    let theme_dir = state.theme_dir(&req.theme);
-    let theme = load_theme_render_options(&theme_dir, req).await?;
-    
+    let theme_assets = embedded_theme(&req.theme)
+        .ok_or_else(|| AppError::BadRequest(format!("unknown theme: {}", req.theme)))?;
+    let theme = load_theme_render_options(theme_assets, req).await?;
+
     let diffed;
     let (md_input, diff_markers) = if let Some(ref old_md) = req.compare_markdown_content {
         diffed = diff_markdown(old_md, markdown);
@@ -62,7 +79,7 @@ pub async fn render_markdown_file(
         &req.theme,
         &theme.document_options,
     )?;
-    let html = apply_template(&theme_dir, filename, &body_html, &theme.print_css).await?;
+    let html = apply_template(theme_assets, filename, &body_html, &theme.print_css)?;
     Ok(RenderedDocument {
         html,
         warnings: body.warnings,
@@ -225,14 +242,14 @@ struct TocItem {
 }
 
 fn collect_toc_items(html: &str) -> Vec<TocItem> {
-    let heading = Regex::new(r#"(?s)<h([23]) id="([^"]+)">(.*?)</h[23]>"#).expect("valid regex");
-    heading
+    TOC_HEADING
         .captures_iter(html)
         .take(128)
         .filter_map(|caps| {
             let level = caps.get(1)?.as_str().as_bytes()[0] - b'0';
-            let id = caps.get(2)?.as_str().to_string();
-            let title_html = caps.get(3)?.as_str().to_string();
+            let body = caps.get(2)?.as_str();
+            let id = TOC_ID.captures(body)?.get(1)?.as_str().to_string();
+            let title_html = TOC_ANCHOR.replace_all(body, "").into_owned();
             Some(TocItem {
                 level,
                 id,
@@ -271,61 +288,20 @@ fn validate_document_metadata(options: &DocumentOptions) -> Result<()> {
 async fn render_body(
     markdown: &str,
     req: &RenderRequest,
-    render_dir: Option<&Path>,
+    _render_dir: Option<&Path>,
     diff_markers: Option<&DiffMarkers>,
 ) -> Result<RenderedDocument> {
     let (without_diagrams, diagrams) = extract_mermaid_blocks(markdown);
-    let mut options = Options::default();
-    options.extension.table = true;
-    options.extension.autolink = true;
-    options.extension.strikethrough = true;
-    options.extension.tasklist = true;
-    options.extension.header_ids = Some("h-".to_string());
-    options.render.unsafe_ = false;
-
-    let mut html = markdown_to_html(&without_diagrams, &options);
-    let mut warnings = Vec::new();
-    let mut logs = Vec::new();
-
-    for (idx, block) in diagrams.iter().enumerate() {
-        let replacement = if req.render_mermaid {
-            let dir = match render_dir {
-                Some(path) => path.to_path_buf(),
-                None => std::env::temp_dir().join(format!("mdpdf-preview-{}", uuid::Uuid::new_v4())),
-            };
-            match render_mermaid_svg(idx + 1, &block.source, &dir).await {
-                Ok(svg) => {
-                    logs.push(format!("mermaid block {} rendered", idx + 1));
-                    format!("<figure class=\"mermaid-diagram\">{svg}</figure>")
-                }
-                Err(err) if req.strict_mermaid => {
-                    return Err(AppError::Conversion(format!(
-                        "mermaid block {} failed: {err}",
-                        idx + 1
-                    )));
-                }
-                Err(err) => {
-                    warnings.push(format!("mermaid block {} failed: {err}", idx + 1));
-                    format!(
-                        "<div class=\"diagram-error\"><strong>Mermaid rendering failed at block {}.</strong><pre>{}</pre></div>",
-                        idx + 1,
-                        encode_text(&block.source)
-                    )
-                }
-            }
-        } else {
-            format!(
-                "<pre class=\"mermaid-source\"><code>{}</code></pre>",
-                encode_text(&block.source)
-            )
-        };
-        let paragraph = format!("<p>{}</p>", block.placeholder);
-        if html.contains(&paragraph) {
-            html = html.replace(&paragraph, &replacement);
-        } else {
-            html = html.replace(&block.placeholder, &replacement);
-        }
-    }
+    let rendered = markdown_to_html(&without_diagrams, &RENDER_OPTIONS);
+    let mut html = replace_mermaid_placeholders(
+        &rendered,
+        markdown,
+        &diagrams,
+        req.render_mermaid,
+        req.strict_mermaid,
+    )?;
+    let warnings = Vec::new();
+    let logs = Vec::new();
 
     if html.contains("@@MERMAID_BLOCK_") {
         return Err(AppError::Conversion(
@@ -336,7 +312,6 @@ async fn render_body(
         html = apply_diff_markers(html, markers)?;
     }
 
-    detect_wide_tables(&html, &mut warnings);
     Ok(RenderedDocument {
         html,
         warnings,
@@ -345,93 +320,185 @@ async fn render_body(
     })
 }
 
-fn apply_diff_markers(mut html: String, markers: &DiffMarkers) -> Result<String> {
-    for (marker, replacement) in [
-        (&markers.add_start, "<div class=\"diff-add\">"),
-        (&markers.add_end, "</div>"),
-        (&markers.del_start, "<div class=\"diff-del\">"),
-        (&markers.del_end, "</div>"),
-    ] {
-        let paragraph = format!("<p>{marker}</p>");
-        html = html.replace(&paragraph, replacement);
+fn apply_diff_markers(html: String, markers: &DiffMarkers) -> Result<String> {
+    let tokens = [
+        (
+            format!("<p>{}</p>", markers.add_start),
+            "<div class=\"diff-add\">",
+        ),
+        (format!("<p>{}</p>", markers.add_end), "</div>"),
+        (
+            format!("<p>{}</p>", markers.del_start),
+            "<div class=\"diff-del\">",
+        ),
+        (format!("<p>{}</p>", markers.del_end), "</div>"),
+    ];
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while cursor < html.len() {
+        let next = tokens
+            .iter()
+            .filter_map(|(paragraph, replacement)| {
+                html[cursor..]
+                    .find(paragraph)
+                    .map(|offset| (cursor + offset, paragraph.as_str(), *replacement))
+            })
+            .min_by_key(|(offset, _, _)| *offset);
+        let Some((offset, marker, replacement)) = next else {
+            output.push_str(&html[cursor..]);
+            break;
+        };
+        output.push_str(&html[cursor..offset]);
+        output.push_str(replacement);
+        cursor = offset + marker.len();
     }
-    if markers.contains_any(&html) {
+    if markers.contains_any(&output) {
         return Err(AppError::Conversion(
             "internal diff marker leaked into rendered HTML".into(),
         ));
     }
-    Ok(html)
+    Ok(output)
 }
 
-async fn apply_template(theme_dir: &Path, title: &str, body: &str, print: &str) -> Result<String> {
-    let template = tokio::fs::read_to_string(theme_dir.join("template.html")).await?;
-    let style = tokio::fs::read_to_string(theme_dir.join("style.css")).await?;
-    
-    let themes_common_dir = theme_dir.parent().ok_or_else(|| {
-        AppError::Conversion("invalid theme path structure".into())
-    })?;
-    
-    let prism_css = tokio::fs::read_to_string(themes_common_dir.join("common/prism.min.css"))
-        .await
-        .unwrap_or_default();
-        
-    let prism_js = tokio::fs::read_to_string(themes_common_dir.join("common/prism.min.js"))
-        .await
-        .unwrap_or_default();
-
-    let mut combined_style = style;
-    if !prism_css.is_empty() {
+fn apply_template(theme: &EmbeddedTheme, title: &str, body: &str, print: &str) -> Result<String> {
+    let mut combined_style = String::with_capacity(theme.style.len() + PRISM_CSS.len() + 32);
+    combined_style.push_str(theme.style);
+    if !PRISM_CSS.is_empty() {
         combined_style.push_str("\n/* Prism CSS */\n");
-        combined_style.push_str(&prism_css);
+        combined_style.push_str(PRISM_CSS);
     }
 
-    let mut html = template
+    let html = theme
+        .template
         .replace("{{title}}", &encode_text(title))
         .replace("{{style}}", &combined_style)
         .replace("{{print_style}}", &print)
         .replace("{{body}}", body);
 
-    if !prism_js.is_empty() {
-        let highlight_script = r#"
-<script>
-  window.addEventListener('DOMContentLoaded', () => {
-    Prism.highlightAll();
-  });
-</script>
-"#;
-        let script_block = format!("<script>\n{}\n</script>\n{}", prism_js, highlight_script);
-        if html.contains("</body>") {
-            html = html.replace("</body>", &format!("{}\n</body>", script_block));
-        } else {
-            html.push_str(&script_block);
-        }
-    }
-
     Ok(html)
 }
 
 fn extract_mermaid_blocks(markdown: &str) -> (String, Vec<MermaidBlock>) {
-    let fence = Regex::new(r"(?ms)^```mermaid\s*\n(.*?)\n```\s*$").expect("valid regex");
+    let bytes = markdown.as_bytes();
     let mut blocks = Vec::new();
-    let replaced = fence
-        .replace_all(markdown, |caps: &regex::Captures<'_>| {
-            let id = blocks.len();
-            let placeholder = format!("@@MERMAID_BLOCK_{id}@@");
-            blocks.push(MermaidBlock {
-                placeholder: placeholder.clone(),
-                source: caps[1].to_string(),
-            });
-            format!("\n\n{placeholder}\n\n")
-        })
-        .to_string();
-    (replaced, blocks)
+    let mut output = String::with_capacity(markdown.len());
+    let mut copy_from = 0;
+    let mut line_start = 0;
+
+    while line_start < bytes.len() {
+        let (line_end, next_line) = line_bounds(bytes, line_start);
+        let line = markdown[line_start..line_end].trim_end_matches('\r');
+        let Some(rest) = line.strip_prefix("```mermaid") else {
+            line_start = next_line;
+            continue;
+        };
+        if !rest.trim().is_empty() || next_line >= bytes.len() {
+            line_start = next_line;
+            continue;
+        }
+
+        let source_start = next_line;
+        let mut closing_start = source_start;
+        let mut closing_next = source_start;
+        let mut found_closing = false;
+        while closing_start < bytes.len() {
+            let (closing_end, after_closing) = line_bounds(bytes, closing_start);
+            let closing = markdown[closing_start..closing_end].trim_end_matches('\r');
+            if closing
+                .strip_prefix("```")
+                .is_some_and(|suffix| suffix.trim().is_empty())
+            {
+                closing_next = after_closing;
+                found_closing = true;
+                break;
+            }
+            closing_start = after_closing;
+        }
+        if !found_closing {
+            break;
+        }
+
+        output.push_str(&markdown[copy_from..line_start]);
+        let placeholder = format!("@@MERMAID_BLOCK_{}@@", blocks.len());
+        let source = markdown[source_start..closing_start].trim_end_matches(['\r', '\n']);
+        blocks.push(MermaidBlock {
+            source_start,
+            source_end: source_start + source.len(),
+        });
+        output.push_str("\n\n");
+        output.push_str(&placeholder);
+        output.push_str("\n\n");
+        copy_from = closing_next;
+        line_start = closing_next;
+    }
+    output.push_str(&markdown[copy_from..]);
+    (output, blocks)
 }
 
-fn detect_wide_tables(html: &str, warnings: &mut Vec<String>) {
-    let th_count = html.matches("<th").count();
-    if th_count >= 8 {
-        warnings.push("document contains wide tables; PDF uses fixed layout and word wrapping".into());
+fn line_bounds(bytes: &[u8], start: usize) -> (usize, usize) {
+    match memchr(b'\n', &bytes[start..]) {
+        Some(relative) => (start + relative, start + relative + 1),
+        None => (bytes.len(), bytes.len()),
     }
+}
+
+fn replace_mermaid_placeholders(
+    html: &str,
+    source_markdown: &str,
+    blocks: &[MermaidBlock],
+    render_mermaid: bool,
+    strict_mermaid: bool,
+) -> Result<String> {
+    const PREFIX: &str = "@@MERMAID_BLOCK_";
+    let mut cursor = 0;
+    let mut output = String::with_capacity(html.len() + blocks.len() * 64);
+    while let Some(relative_start) = html[cursor..].find(PREFIX) {
+        let marker_start = cursor + relative_start;
+        let digits_start = marker_start + PREFIX.len();
+        let Some(relative_end) = html[digits_start..].find("@@") else {
+            return Err(AppError::Conversion("invalid Mermaid placeholder".into()));
+        };
+        let marker_end = digits_start + relative_end + 2;
+        let index = html[digits_start..digits_start + relative_end]
+            .parse::<usize>()
+            .map_err(|_| AppError::Conversion("invalid Mermaid placeholder index".into()))?;
+        let block = blocks.get(index).ok_or_else(|| {
+            AppError::Conversion("Mermaid placeholder index is out of range".into())
+        })?;
+        let source = &source_markdown[block.source_start..block.source_end];
+        let content_start = if marker_start >= 3 && &html[marker_start - 3..marker_start] == "<p>" {
+            marker_start - 3
+        } else {
+            marker_start
+        };
+        let content_end = if html[marker_end..].starts_with("</p>") {
+            marker_end + 4
+        } else {
+            marker_end
+        };
+        output.push_str(&html[cursor..content_start]);
+        if render_mermaid {
+            output.push_str(
+                "<figure class=\"mermaid-diagram\"><div class=\"mermaid\" data-strict=\"",
+            );
+            output.push_str(if strict_mermaid { "true" } else { "false" });
+            output.push_str("\">");
+            output.push_str(&encode_text(source));
+            output.push_str("</div></figure>");
+        } else {
+            output.push_str("<pre class=\"mermaid-source\"><code>");
+            output.push_str(&encode_text(source));
+            output.push_str("</code></pre>");
+        }
+        cursor = content_end;
+    }
+    output.push_str(&html[cursor..]);
+    if output.contains(PREFIX) {
+        return Err(AppError::Conversion(
+            "internal Mermaid placeholder leaked into rendered HTML".into(),
+        ));
+    }
+    Ok(output)
 }
 
 fn validate_theme_name(name: &str) -> Result<()> {
@@ -456,7 +523,7 @@ mod tests {
         let new = "safe\n<script>alert(1)</script>\n";
         let diffed = diff_markdown(old, new);
         let req = RenderRequest {
-            file_id: None,
+            source_path: None,
             markdown_content: Some(new.to_string()),
             compare_markdown_content: Some(old.to_string()),
             filename: Some("document.md".to_string()),
@@ -473,5 +540,25 @@ mod tests {
         assert!(rendered.html.contains("diff-add"));
         assert!(!rendered.html.contains("<script>alert(1)</script>"));
         assert!(!diffed.markers.contains_any(&rendered.html));
+    }
+
+    #[test]
+    fn toc_reads_comrak_anchor_ids() {
+        let html = r##"<h2><a inert href="#part" aria-hidden="true" class="anchor" id="h-part"></a>Part</h2>"##;
+        let items = collect_toc_items(html);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "h-part");
+        assert_eq!(items[0].title_html, "Part");
+    }
+
+    #[test]
+    fn optimized_mermaid_pass_handles_multiple_blocks() {
+        let markdown = "before\n```mermaid\ngraph TD; A-->B\n```\nmiddle\n```mermaid\ngraph LR; C-->D\n```\nafter";
+        let (without, blocks) = extract_mermaid_blocks(markdown);
+        let rendered = markdown_to_html(&without, &Options::default());
+        let html = replace_mermaid_placeholders(&rendered, markdown, &blocks, true, true).unwrap();
+        assert_eq!(html.matches("class=\"mermaid\"").count(), 2);
+        assert!(html.contains("data-strict=\"true\""));
+        assert!(!html.contains("@@MERMAID_BLOCK_"));
     }
 }

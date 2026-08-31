@@ -116,9 +116,10 @@ export function render_markdown(input_json) {
  * @param {boolean} toc_enabled
  * @param {boolean} chapter_page_break
  * @param {string} page_size
+ * @param {string} custom_css
  * @returns {WasmRenderOutput}
  */
-export function render_markdown_fast(markdown, filename, theme, render_mermaid, compare_markdown, cover_enabled, toc_enabled, chapter_page_break, page_size) {
+export function render_markdown_fast(markdown, filename, theme, render_mermaid, compare_markdown, cover_enabled, toc_enabled, chapter_page_break, page_size, custom_css) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         const ptr0 = passStringToWasm0(markdown, wasm.__wbindgen_export, wasm.__wbindgen_export2);
@@ -131,7 +132,9 @@ export function render_markdown_fast(markdown, filename, theme, render_mermaid, 
         var len3 = WASM_VECTOR_LEN;
         const ptr4 = passStringToWasm0(page_size, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len4 = WASM_VECTOR_LEN;
-        wasm.render_markdown_fast(retptr, ptr0, len0, ptr1, len1, ptr2, len2, render_mermaid, ptr3, len3, cover_enabled, toc_enabled, chapter_page_break, ptr4, len4);
+        const ptr5 = passStringToWasm0(custom_css, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len5 = WASM_VECTOR_LEN;
+        wasm.render_markdown_fast(retptr, ptr0, len0, ptr1, len1, ptr2, len2, render_mermaid, ptr3, len3, cover_enabled, toc_enabled, chapter_page_break, ptr4, len4, ptr5, len5);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);

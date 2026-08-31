@@ -593,9 +593,9 @@ fn inline_local_images(
     let mut warnings = Vec::new();
     let mut total_bytes = 0u64;
     let replaced = image.replace_all(html, |captures: &regex::Captures<'_>| {
-        let raw = html_escape::decode_html_entities(&captures[2]);
+        let raw = html_escape::decode_html_entities(&captures[2]).into_owned();
         let replacement = if raw.starts_with("data:") {
-            raw.into_owned()
+            raw.clone()
         } else if raw.starts_with("http://") || raw.starts_with("https://") {
             warnings.push(format!("remote image blocked in offline mode: {raw}"));
             BLOCKED_PIXEL.to_string()
@@ -612,7 +612,13 @@ fn inline_local_images(
                 BLOCKED_PIXEL.to_string()
             })
         };
-        format!("{}{}{}", &captures[1], replacement, &captures[3])
+        format!(
+            "{}{}{} data-mdpdf-src=\"{}\"",
+            &captures[1],
+            replacement,
+            &captures[3],
+            html_escape::encode_double_quoted_attribute(&raw)
+        )
     });
     (replaced.into_owned(), warnings)
 }
@@ -732,6 +738,20 @@ mod tests {
         assert!(rendered.contains("<\\/script marker"));
         assert!(rendered.contains("mermaid.run"));
         assert!(rendered.find("mermaid.run").unwrap() < rendered.find("</body>").unwrap());
+    }
+
+    #[test]
+    fn inlined_image_keeps_its_markdown_source_path() {
+        let root = std::env::temp_dir();
+        let document = root.join("document.md");
+        let (html, warnings) = inline_local_images(
+            r#"<img src="https://example.invalid/image.png" alt="sample">"#,
+            &document,
+            &root,
+        );
+        assert_eq!(warnings.len(), 1);
+        assert!(html.contains("data:image/gif;base64,"));
+        assert!(html.contains(r#"data-mdpdf-src="https://example.invalid/image.png""#));
     }
 
     #[cfg(windows)]

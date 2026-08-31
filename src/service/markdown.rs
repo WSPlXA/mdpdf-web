@@ -174,6 +174,7 @@ fn decorate_body(
     if options.toc_enabled {
         out.push_str(&render_toc(html));
     }
+    out.push_str("<section class=\"mdpdf-editable\">");
     if options.chapter_page_break {
         out.push_str("<section class=\"chapter-breaks\">");
         out.push_str(html);
@@ -181,6 +182,7 @@ fn decorate_body(
     } else {
         out.push_str(html);
     }
+    out.push_str("</section>");
     Ok(out)
 }
 

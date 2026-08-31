@@ -46,35 +46,108 @@
         </div>
       </header>
       <div id="settingsPanel" class="settings-panel" hidden>
-        <label>テーマ
-          <select id="themeSelect">
-            <option value="modern-tech">modern-tech</option>
-            <option value="jp-standard">jp-standard</option>
-          </select>
-        </label>
-        <label>用紙
-          <select id="pageSizeSelect">
-            <option value="A4">A4</option>
-            <option value="A3">A3</option>
-            <option value="Letter">Letter</option>
-          </select>
-        </label>
-        <label><input id="mermaidToggle" type="checkbox"> Mermaid (内蔵・オフライン)</label>
-        <label><input id="coverToggle" type="checkbox"> 表紙</label>
-        <label><input id="tocToggle" type="checkbox"> 目次</label>
-        <label><input id="chapterBreakToggle" type="checkbox"> 章ごとに改ページ</label>
+        <section class="setting-group">
+          <strong>版式</strong>
+          <label>基础模板
+            <select id="themeSelect">
+              <option value="custom">自定义</option>
+              <option value="modern-tech">Modern Tech</option>
+              <option value="jp-standard">日文标准</option>
+            </select>
+          </label>
+          <label>字体
+            <select id="fontFamilySelect">
+              <option value="sans">无衬线</option>
+              <option value="serif">衬线</option>
+              <option value="jp">日文字体</option>
+              <option value="mono">等宽字体</option>
+            </select>
+          </label>
+          <div class="setting-row compact-fields">
+            <label>字号<input id="fontSizeInput" type="number" min="8" max="24" step="0.5" value="10.5"></label>
+            <label>行距<input id="lineHeightInput" type="number" min="1" max="2.5" step="0.05" value="1.7"></label>
+          </div>
+          <div class="setting-row color-fields">
+            <label>文字<input id="textColorInput" type="color" value="#242424"></label>
+            <label>强调<input id="accentColorInput" type="color" value="#2f6f73"></label>
+          </div>
+        </section>
+
+        <section class="setting-group">
+          <strong>页面</strong>
+          <label>纸张
+            <select id="pageSizeSelect">
+              <option value="A4">A4</option>
+              <option value="A3">A3</option>
+              <option value="Letter">Letter</option>
+            </select>
+          </label>
+          <div class="setting-row margin-fields">
+            <label>上<input id="marginTopInput" type="number" min="0" max="60" step="1" value="20"></label>
+            <label>右<input id="marginRightInput" type="number" min="0" max="60" step="1" value="18"></label>
+            <label>下<input id="marginBottomInput" type="number" min="0" max="60" step="1" value="18"></label>
+            <label>左<input id="marginLeftInput" type="number" min="0" max="60" step="1" value="18"></label>
+          </div>
+          <div class="check-grid">
+            <label><input id="mermaidToggle" type="checkbox"> Mermaid</label>
+            <label><input id="coverToggle" type="checkbox"> 封面</label>
+            <label><input id="tocToggle" type="checkbox"> 目录</label>
+            <label><input id="chapterBreakToggle" type="checkbox"> 章节分页</label>
+          </div>
+        </section>
+
+        <section class="setting-group header-footer-settings">
+          <strong>页眉与页脚</strong>
+          <div class="header-footer-row">
+            <label class="enable-field"><input id="headerEnabledToggle" type="checkbox"> 页眉</label>
+            <input id="headerTextInput" type="text" placeholder="例如：项目名称" value="">
+            <select id="headerAlignSelect" aria-label="页眉对齐">
+              <option value="left">左</option><option value="center">中</option><option value="right">右</option>
+            </select>
+          </div>
+          <div class="header-footer-row">
+            <label class="enable-field"><input id="footerEnabledToggle" type="checkbox" checked> 页脚</label>
+            <input id="footerTextInput" type="text" value="{page} / {total}" placeholder="支持 {page} 与 {total}">
+            <select id="footerAlignSelect" aria-label="页脚对齐">
+              <option value="left">左</option><option value="center">中</option><option value="right" selected>右</option>
+            </select>
+          </div>
+          <small>页码变量：{page} 当前页，{total} 总页数</small>
+          <label class="custom-css-field">自定义 CSS
+            <textarea id="customCssInput" rows="4" placeholder="例如：h1 { color: #7c3aed; }"></textarea>
+          </label>
+          <button id="resetStyleBtn" type="button">恢复版式默认值</button>
+        </section>
       </div>
       <div class="live-document">
-        <section class="source-panel" aria-label="Markdown editor">
-          <textarea id="markdownEditor" spellcheck="false" disabled placeholder="Markdown を選択してください"></textarea>
-          <footer class="editor-footer">
-            <label><input id="autoSaveToggle" type="checkbox" checked> 自動保存</label>
-            <span id="editorStats">0 文字 / 0 行</span>
-          </footer>
-        </section>
+        <div id="formatToolbar" class="format-toolbar" role="toolbar" aria-label="Markdown formatting">
+          <button type="button" data-format="heading1" title="一级标题">H1</button>
+          <button type="button" data-format="heading2" title="二级标题">H2</button>
+          <button type="button" data-format="bold" title="粗体"><b>B</b></button>
+          <button type="button" data-format="italic" title="斜体"><i>I</i></button>
+          <button type="button" data-format="strike" title="删除线"><s>S</s></button>
+          <span class="toolbar-separator"></span>
+          <button type="button" data-format="quote" title="引用">❯</button>
+          <button type="button" data-format="unordered-list" title="无序列表">• 列表</button>
+          <button type="button" data-format="ordered-list" title="有序列表">1. 列表</button>
+          <button type="button" data-format="task" title="任务列表">☐</button>
+          <span class="toolbar-separator"></span>
+          <button type="button" data-format="link" title="链接">链接</button>
+          <button type="button" data-format="image" title="图片">图片</button>
+          <button type="button" data-format="inline-code" title="行内代码">代码</button>
+          <button type="button" data-format="code-block" title="代码块">代码块</button>
+          <button type="button" data-format="table" title="表格">表格</button>
+          <button type="button" data-format="mermaid" title="Mermaid 图表">图表</button>
+          <button type="button" data-format="horizontal-rule" title="分隔线">―</button>
+        </div>
+        <textarea id="markdownEditor" class="markdown-source-buffer" spellcheck="false" disabled aria-hidden="true"></textarea>
         <section class="render-panel" aria-label="Live preview">
-          <iframe id="previewFrame" title="Markdown preview" sandbox=""></iframe>
+          <iframe id="previewFrame" title="可直接编辑的 Markdown 页面" sandbox="allow-same-origin"></iframe>
         </section>
+        <footer class="editor-footer">
+          <label><input id="autoSaveToggle" type="checkbox" checked> 自动保存</label>
+          <span>直接在页面中编辑 · <span id="editorStats">0 字 / 0 行</span></span>
+        </footer>
       </div>
     </section>
   </main>

@@ -35,6 +35,7 @@ pub struct PdfFormatOverride {
     pub header_enabled: Option<bool>,
     pub header_format: Option<String>,
     pub header_align: Option<String>,
+    pub custom_css: Option<String>,
 }
 
 #[derive(Serialize)]

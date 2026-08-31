@@ -35,6 +35,8 @@ struct RenderInput {
     chapter_page_break: bool,
     #[serde(default = "default_page_size")]
     page_size: String,
+    #[serde(default)]
+    custom_css: String,
 }
 
 #[derive(Serialize)]
@@ -134,6 +136,7 @@ pub fn render_markdown_fast(
     toc_enabled: bool,
     chapter_page_break: bool,
     page_size: String,
+    custom_css: String,
 ) -> Result<WasmRenderOutput, JsValue> {
     let output = render(RenderInput {
         markdown,
@@ -145,6 +148,7 @@ pub fn render_markdown_fast(
         toc_enabled,
         chapter_page_break,
         page_size,
+        custom_css,
     })
     .map_err(|error| JsValue::from_str(&error))?;
     Ok(WasmRenderOutput {
@@ -168,6 +172,7 @@ fn render(input: RenderInput) -> Result<RenderOutput, String> {
         toc_enabled,
         chapter_page_break,
         page_size,
+        custom_css,
     } = input;
     let theme = theme_assets(&theme)?;
     let title = extract_markdown_title(&markdown)
@@ -192,13 +197,19 @@ fn render(input: RenderInput) -> Result<RenderOutput, String> {
     let cover = cover_enabled.then(|| render_cover(&title));
     let toc = toc_enabled.then(|| render_toc(&body));
 
-    let print = theme
+    let mut print = theme
         .print
         .replace("{{page_size}}", &validate_page_size(&page_size)?)
         .replace("{{page_margin_top}}", "20mm")
         .replace("{{page_margin_right}}", "18mm")
         .replace("{{page_margin_bottom}}", "18mm")
         .replace("{{page_margin_left}}", "18mm");
+    if !custom_css.trim().is_empty() {
+        validate_custom_css(&custom_css)?;
+        print.push_str("\n\n/* User CSS */\n");
+        print.push_str(custom_css.trim());
+        print.push('\n');
+    }
     let style = theme.style.as_str();
     let shell = theme
         .template
@@ -222,6 +233,7 @@ fn render(input: RenderInput) -> Result<RenderOutput, String> {
     if let Some(toc) = toc {
         html.push_str(&toc);
     }
+    html.push_str("<section class=\"mdpdf-editable\">");
     if chapter_page_break {
         html.push_str("<section class=\"chapter-breaks\">");
         html.push_str(&body);
@@ -229,6 +241,7 @@ fn render(input: RenderInput) -> Result<RenderOutput, String> {
     } else {
         html.push_str(&body);
     }
+    html.push_str("</section>");
     html.push_str(&shell[marker + "{{body}}".len()..]);
 
     Ok(RenderOutput {
@@ -259,6 +272,19 @@ fn validate_page_size(value: &str) -> Result<String, String> {
         "A3" | "A4" | "Letter" => Ok(value.to_string()),
         _ => Err(format!("invalid page size: {value}")),
     }
+}
+
+fn validate_custom_css(css: &str) -> Result<(), String> {
+    if css.len() > 64 * 1024 {
+        return Err("custom CSS exceeds the 64 KiB limit".into());
+    }
+    let normalized = css.to_ascii_lowercase();
+    for blocked in ["</style", "<script", "@import", "javascript:", "url("] {
+        if normalized.contains(blocked) {
+            return Err(format!("custom CSS contains blocked content: {blocked}"));
+        }
+    }
+    Ok(())
 }
 
 fn combined_style(style: &str) -> String {
@@ -570,11 +596,14 @@ mod tests {
             toc_enabled: true,
             chapter_page_break: false,
             page_size: "A4".into(),
+            custom_css: "body { font-size: 12pt; }".into(),
         })
         .unwrap();
         assert!(output.html.contains("class=\"doc-toc\""), "{}", output.html);
+        assert!(output.html.contains("class=\"mdpdf-editable\""));
         assert!(output.html.contains("class=\"mermaid\""));
         assert!(!output.html.contains("<script>x</script>"));
+        assert!(output.html.contains("font-size: 12pt"));
     }
 
     #[test]

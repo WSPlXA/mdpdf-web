@@ -220,7 +220,7 @@ pub async fn load_theme_render_options(
     let mut config = load_theme_config(theme)?;
     apply_request_format(&mut config, req.format.as_ref())?;
     validate_config(&config)?;
-    let print_css = render_print_css(theme, &config, &req.theme)?;
+    let print_css = render_print_css(theme, &config, &req.theme, req.format.as_ref())?;
     let print_options = build_print_options(&config, req);
     let document_options = build_document_options(&config, req);
     Ok(ThemeRenderOptions {
@@ -286,6 +286,7 @@ fn apply_request_format(
             .pdf
             .get_or_insert_with(|| PdfConfig::with_page_numbers(default_page_numbers));
         if let Some(value) = clean_optional(&format.header_format) {
+            validate_header_format(&value)?;
             pdf.header.enabled = true;
             if value.contains("{page}") || value.contains("{total}") {
                 pdf.header.page_numbers = true;
@@ -323,6 +324,7 @@ fn render_print_css(
     theme: &EmbeddedTheme,
     config: &ThemeConfig,
     theme_name: &str,
+    format: Option<&PdfFormatOverride>,
 ) -> Result<String> {
     let mut css = theme
         .print
@@ -332,7 +334,30 @@ fn render_print_css(
         .replace("{{page_margin_bottom}}", &config.page.margin.bottom)
         .replace("{{page_margin_left}}", &config.page.margin.left);
     append_page_margin_css(&mut css, config, theme_name);
+    if let Some(custom_css) = format.and_then(|item| clean_optional(&item.custom_css)) {
+        validate_custom_css(&custom_css)?;
+        css.push_str("\n\n/* User CSS */\n");
+        css.push_str(&custom_css);
+        css.push('\n');
+    }
     Ok(css)
+}
+
+fn validate_custom_css(css: &str) -> Result<()> {
+    if css.len() > 64 * 1024 {
+        return Err(AppError::BadRequest(
+            "custom CSS exceeds the 64 KiB limit".into(),
+        ));
+    }
+    let normalized = css.to_ascii_lowercase();
+    for blocked in ["</style", "<script", "@import", "javascript:", "url("] {
+        if normalized.contains(blocked) {
+            return Err(AppError::BadRequest(format!(
+                "custom CSS contains blocked content: {blocked}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn append_page_margin_css(css: &mut String, config: &ThemeConfig, theme: &str) {
@@ -628,14 +653,18 @@ fn validate_css_color(name: &str, value: &str) -> Result<()> {
 }
 
 fn validate_footer_format(value: &str) -> Result<()> {
-    if value.len() > 80 {
+    if value.len() > 200 {
         return Err(AppError::Conversion(
-            "invalid footer_format: maximum length is 80 bytes".into(),
+            "invalid footer_format: maximum length is 200 bytes".into(),
         ));
     }
-    if !value.contains("{page}") {
+    Ok(())
+}
+
+fn validate_header_format(value: &str) -> Result<()> {
+    if value.len() > 200 {
         return Err(AppError::Conversion(
-            "invalid footer_format: missing {page}".into(),
+            "invalid header_format: maximum length is 200 bytes".into(),
         ));
     }
     Ok(())
@@ -720,5 +749,20 @@ mod tests {
         assert!(css.contains("content: counter(page) \" / \" counter(pages);"));
         assert!(css.contains("font-size: 11px;"));
         assert!(!css.contains("pageNumber"));
+    }
+
+    #[test]
+    fn custom_footer_text_does_not_require_a_page_token() {
+        assert!(validate_footer_format("Confidential").is_ok());
+        assert_eq!(page_counter_content("Confidential"), "\"Confidential\"");
+    }
+
+    #[test]
+    fn custom_css_blocks_document_escape_and_external_urls() {
+        assert!(validate_custom_css("h1 { color: #7c3aed; }").is_ok());
+        assert!(
+            validate_custom_css("body { background: url(https://example.com/a.png); }").is_err()
+        );
+        assert!(validate_custom_css("</style><script>alert(1)</script>").is_err());
     }
 }

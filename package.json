@@ -2,7 +2,7 @@
   "name": "mdpdf-desktop-assets",
   "private": true,
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
     "vendor": "node scripts/vendor_mermaid.cjs",
     "build:wasm": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_wasm.ps1",

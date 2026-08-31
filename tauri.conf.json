@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Markdown PDF Desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "io.mdpdf.desktop",
   "build": {
     "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_wasm.ps1",

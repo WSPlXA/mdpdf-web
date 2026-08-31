@@ -32,6 +32,7 @@ let previewTimer = 0;
 let saveTimer = 0;
 let previewSequence = 0;
 let visualSyncTimer = 0;
+let mermaidEditSequence = 0;
 
 const STYLE_DEFAULTS = Object.freeze({
   theme: "custom",
@@ -342,6 +343,60 @@ ${marginBoxes}
   }
   .mdpdf-editable:focus { outline: none; }
   .mdpdf-editable [contenteditable="false"] { cursor: default; user-select: none; }
+  .mermaid-rendered {
+    position: relative;
+    min-height: 52px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer !important;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .mermaid-rendered:hover, .mermaid-rendered:focus {
+    border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+    outline: none;
+  }
+  .mermaid-rendered:not(.mermaid-editing):hover::after,
+  .mermaid-rendered:not(.mermaid-editing):focus::after {
+    content: "双击编辑 Mermaid";
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 88%, #000);
+    color: #fff;
+    font: 11px/1.4 "Segoe UI", sans-serif;
+    pointer-events: none;
+  }
+  .mermaid-rendered.mermaid-editing {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border-color: var(--accent);
+    background: #f8fbfb;
+    cursor: default !important;
+  }
+  .mermaid-inline-tools { display: flex; justify-content: space-between; gap: 12px; color: #52606b; font: 12px/1.4 "Segoe UI", sans-serif; }
+  .mermaid-inline-tools strong { color: var(--ink); }
+  .mermaid-inline-source {
+    width: 100%;
+    min-height: 128px;
+    padding: 9px 10px;
+    resize: vertical;
+    border: 1px solid #b9c5cc;
+    border-radius: 5px;
+    background: #fff;
+    color: #1f2933;
+    outline: none;
+    user-select: text !important;
+    font: 12px/1.55 "Cascadia Code", Consolas, monospace;
+    tab-size: 2;
+  }
+  .mermaid-inline-source:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .mermaid-inline-preview { min-height: 44px; padding: 8px; overflow: auto; border-radius: 4px; background: #fff; text-align: center; }
+  .mermaid-inline-error { padding: 7px 9px; border-radius: 4px; background: #fff0ee; color: #9a342f; font: 12px/1.45 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; user-select: text !important; }
+  .mermaid-inline-error[hidden] { display: none; }
   .document::before {
     content: ${elements.headerEnabledToggle.checked ? cssString(screenHeader) : '""'};
     display: ${elements.headerEnabledToggle.checked && screenHeader ? "block" : "none"};
@@ -442,28 +497,179 @@ async function renderEmbeddedMermaid(html) {
   const sequence = ++previewSequence;
   for (let index = 0; index < diagrams.length; index += 1) {
     const diagram = diagrams[index];
+    const source = diagram.textContent || "";
+    const rendered = documentView.createElement("div");
+    rendered.className = "mermaid-rendered";
+    rendered.dataset.mdpdfMermaidSource = source;
+    rendered.setAttribute("contenteditable", "false");
     try {
       const id = `mdpdf-mermaid-${sequence}-${index}`;
-      const { svg } = await mermaid.render(id, diagram.textContent || "");
-      const rendered = documentView.createElement("div");
-      rendered.className = "mermaid-rendered";
-      rendered.dataset.mdpdfMermaidSource = diagram.textContent || "";
-      rendered.setAttribute("contenteditable", "false");
+      const { svg } = await mermaid.render(id, source);
       rendered.innerHTML = svg;
-      diagram.replaceWith(rendered);
     } catch (error) {
       const message = error?.message || String(error);
       const errorBlock = documentView.createElement("pre");
       errorBlock.className = "diagram-error";
       errorBlock.textContent = `Mermaid: ${message}`;
-      diagram.replaceWith(errorBlock);
+      rendered.classList.add("mermaid-invalid");
+      rendered.append(errorBlock);
       warnings.push(`Mermaid ${index + 1}: ${message}`);
     }
+    diagram.replaceWith(rendered);
   }
   return {
     html: `<!doctype html>\n${documentView.documentElement.outerHTML}`,
     warnings,
   };
+}
+
+async function renderMermaidEditorPreview(diagram, editor) {
+  const revision = ++editor.revision;
+  const source = editor.source.value;
+  try {
+    const id = `mdpdf-mermaid-inline-${++mermaidEditSequence}`;
+    const { svg } = await mermaid.render(id, source);
+    if (diagram._mdpdfMermaidEditor !== editor || editor.revision !== revision) return false;
+    editor.preview.innerHTML = svg;
+    editor.error.hidden = true;
+    editor.error.textContent = "";
+    editor.lastValidSource = source;
+    diagram.classList.remove("mermaid-invalid");
+    return true;
+  } catch (error) {
+    if (diagram._mdpdfMermaidEditor !== editor || editor.revision !== revision) return false;
+    editor.error.textContent = `Mermaid: ${error?.message || String(error)}`;
+    editor.error.hidden = false;
+    diagram.classList.add("mermaid-invalid");
+    return false;
+  }
+}
+
+async function finishMermaidEditing(diagram) {
+  const editor = diagram._mdpdfMermaidEditor;
+  if (!editor || editor.committing) return;
+  editor.committing = true;
+  clearTimeout(editor.timer);
+  editor.source.disabled = true;
+  diagram.dataset.mdpdfMermaidSource = editor.source.value;
+  const valid = await renderMermaidEditorPreview(diagram, editor);
+  if (!valid) {
+    editor.committing = false;
+    editor.source.disabled = false;
+    editor.source.focus();
+    return;
+  }
+  diagram.replaceChildren(...editor.preview.cloneNode(true).childNodes);
+  diagram.classList.remove("mermaid-editing", "mermaid-invalid");
+  delete diagram._mdpdfMermaidEditor;
+  diagram.focus();
+  queueVisualSync();
+}
+
+function cancelMermaidEditing(diagram) {
+  const editor = diagram._mdpdfMermaidEditor;
+  if (!editor) return;
+  clearTimeout(editor.timer);
+  editor.revision += 1;
+  diagram.dataset.mdpdfMermaidSource = editor.originalSource;
+  diagram.innerHTML = editor.originalHtml;
+  diagram.classList.remove("mermaid-editing");
+  diagram.classList.toggle("mermaid-invalid", editor.originalInvalid);
+  delete diagram._mdpdfMermaidEditor;
+  diagram.focus();
+  queueVisualSync();
+}
+
+export function beginMermaidEditing(diagram, documentView = diagram?.ownerDocument) {
+  if (!diagram || !documentView || !mermaid || diagram._mdpdfMermaidEditor) return false;
+  const originalSource = diagram.dataset.mdpdfMermaidSource || "";
+  const originalHtml = diagram.innerHTML;
+  const originalInvalid = diagram.classList.contains("mermaid-invalid");
+  const toolbar = documentView.createElement("div");
+  toolbar.className = "mermaid-inline-tools";
+  const label = documentView.createElement("strong");
+  label.textContent = "Mermaid 源码";
+  const hint = documentView.createElement("span");
+  hint.textContent = "Ctrl+Enter 完成 · Esc 取消";
+  toolbar.append(label, hint);
+
+  const source = documentView.createElement("textarea");
+  source.className = "mermaid-inline-source";
+  source.value = originalSource;
+  source.spellcheck = false;
+  source.setAttribute("aria-label", "Mermaid 源码");
+
+  const preview = documentView.createElement("div");
+  preview.className = "mermaid-inline-preview";
+  if (!originalInvalid) preview.innerHTML = originalHtml;
+  const error = documentView.createElement("div");
+  error.className = "mermaid-inline-error";
+  error.hidden = true;
+
+  const editor = {
+    source,
+    preview,
+    error,
+    originalSource,
+    originalHtml,
+    originalInvalid,
+    lastValidSource: originalInvalid ? null : originalSource,
+    revision: 0,
+    timer: 0,
+    committing: false,
+  };
+  diagram._mdpdfMermaidEditor = editor;
+  diagram.classList.add("mermaid-editing");
+  diagram.replaceChildren(toolbar, source, preview, error);
+
+  source.addEventListener("input", () => {
+    diagram.dataset.mdpdfMermaidSource = source.value;
+    queueVisualSync();
+    clearTimeout(editor.timer);
+    editor.timer = window.setTimeout(() => renderMermaidEditorPreview(diagram, editor), 140);
+  });
+  source.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelMermaidEditing(diagram);
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      finishMermaidEditing(diagram);
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      syncVisualEditor();
+      saveActive();
+    }
+  });
+  source.focus();
+  source.setSelectionRange(source.value.length, source.value.length);
+  if (originalInvalid) renderMermaidEditorPreview(diagram, editor);
+  return true;
+}
+
+export function activateMermaidEditors(documentView) {
+  for (const diagram of documentView?.querySelectorAll(".mermaid-rendered") || []) {
+    diagram.tabIndex = 0;
+    diagram.setAttribute("role", "button");
+    diagram.setAttribute("aria-label", "Mermaid 图表，双击或按 Enter 编辑");
+    diagram.title = "双击编辑 Mermaid 图表";
+    diagram.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      beginMermaidEditing(diagram, documentView);
+    });
+    diagram.addEventListener("keydown", (event) => {
+      if (event.target !== diagram || event.key !== "Enter") return;
+      event.preventDefault();
+      event.stopPropagation();
+      beginMermaidEditing(diagram, documentView);
+    });
+  }
 }
 
 async function updatePreview() {
@@ -903,6 +1109,7 @@ function activateVisualEditor() {
   editable.contentEditable = "true";
   editable.spellcheck = true;
   editable.setAttribute("aria-label", "直接编辑文档内容");
+  activateMermaidEditors(documentView);
   editable.addEventListener("input", queueVisualSync);
   editable.addEventListener("paste", (event) => {
     event.preventDefault();

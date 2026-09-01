@@ -189,10 +189,10 @@ fn decorate_body(
 fn render_cover(title: &str, _theme: &str, options: &DocumentOptions) -> String {
     let mut rows = Vec::with_capacity(3);
     if !options.doc_code.is_empty() {
-        rows.push(("文档编号", options.doc_code.as_str()));
+        rows.push(("文書番号", options.doc_code.as_str()));
     }
     if !options.version.is_empty() {
-        rows.push(("版本", options.version.as_str()));
+        rows.push(("バージョン", options.version.as_str()));
     }
     if !options.owner.is_empty() {
         rows.push(("作成者 / 部門", options.owner.as_str()));
@@ -223,7 +223,7 @@ fn render_toc(html: &str) -> String {
     }
 
     let mut out = String::with_capacity(1024 + headings.len() * 160);
-    out.push_str("<nav class=\"doc-toc\"><h2>目录</h2><ol>");
+    out.push_str("<nav class=\"doc-toc\"><h2>目次</h2><ol>");
     for item in headings {
         out.push_str("<li class=\"toc-level-");
         out.push(char::from(b'0' + item.level));

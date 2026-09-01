@@ -1,0 +1,126 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build and publish Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify release versions
+        shell: pwsh
+        run: |
+          $tauriVersion = (Get-Content tauri.conf.json -Raw | ConvertFrom-Json).version
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $cargoVersion = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          $wasmVersion = (Select-String -Path wasm-renderer/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          $versions = @($tauriVersion, $packageVersion, $cargoVersion, $wasmVersion) | Select-Object -Unique
+          if ($versions.Count -ne 1) {
+            throw "Version mismatch: tauri=$tauriVersion package=$packageVersion cargo=$cargoVersion wasm=$wasmVersion"
+          }
+          if ($env:GITHUB_REF_NAME -ne "v$tauriVersion") {
+            throw "Tag $env:GITHUB_REF_NAME does not match application version v$tauriVersion"
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+
+      - name: Check Rust formatting
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          cargo fmt --manifest-path wasm-renderer/Cargo.toml -- --check
+
+      - name: Build and test WASM renderer
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_wasm.ps1
+          cargo test --locked --manifest-path wasm-renderer/Cargo.toml
+          npm run test:wasm
+
+      - name: Run desktop unit tests
+        run: cargo test --locked --bin mdpdf-desktop -- --skip edge_writes_a_local_pdf_without_a_server --skip embedded_mermaid_is_rendered_by_edge_without_mmdc
+
+      - name: Build and publish Tauri release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Markdown PDF Desktop v__VERSION__
+          releaseBody: |
+            Windows x64 オフラインインストーラーです。
+
+            - UI 表示を日本語に統一
+            - 文書ページ上で直接編集
+            - Mermaid 図をその場で編集して即時プレビュー
+            - Node.js の事前インストールは不要
+
+            SHA-256 は同梱の `.sha256` ファイルで確認できます。
+          releaseDraft: false
+          prerelease: false
+          args: --bundles nsis
+
+      - name: Generate SHA-256 checksum
+        id: checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer was not produced' }
+          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
+          $checksumPath = "$($installer.FullName).sha256"
+          "$digest  $($installer.Name)" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+          "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "checksum=$checksumPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload checksum to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload $env:GITHUB_REF_NAME '${{ steps.checksum.outputs.checksum }}' --clobber
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Markdown-PDF-Desktop-${{ github.ref_name }}-windows-x64
+          path: |
+            ${{ steps.checksum.outputs.installer }}
+            ${{ steps.checksum.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 30

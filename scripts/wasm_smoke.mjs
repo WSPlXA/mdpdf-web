@@ -6,7 +6,7 @@ initSync({ module });
 
 const output = render_markdown_fast(
   "# WASM smoke\n\n## Section\n\n| A | B |\n|---|---|\n| 1 | 2 |",
-  "smoke.md", "jp-standard", false, undefined, false, true, false, "A4",
+  "smoke.md", "jp-standard", false, undefined, false, true, false, "A4", "",
 );
 const result = {
   html: output.take_html(),

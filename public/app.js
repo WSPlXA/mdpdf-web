@@ -358,7 +358,7 @@ ${marginBoxes}
   }
   .mermaid-rendered:not(.mermaid-editing):hover::after,
   .mermaid-rendered:not(.mermaid-editing):focus::after {
-    content: "双击编辑 Mermaid";
+    content: "ダブルクリックで Mermaid を編集";
     position: absolute;
     top: 7px;
     right: 8px;
@@ -588,16 +588,16 @@ export function beginMermaidEditing(diagram, documentView = diagram?.ownerDocume
   const toolbar = documentView.createElement("div");
   toolbar.className = "mermaid-inline-tools";
   const label = documentView.createElement("strong");
-  label.textContent = "Mermaid 源码";
+  label.textContent = "Mermaid ソース";
   const hint = documentView.createElement("span");
-  hint.textContent = "Ctrl+Enter 完成 · Esc 取消";
+  hint.textContent = "Ctrl+Enter で完了 · Esc でキャンセル";
   toolbar.append(label, hint);
 
   const source = documentView.createElement("textarea");
   source.className = "mermaid-inline-source";
   source.value = originalSource;
   source.spellcheck = false;
-  source.setAttribute("aria-label", "Mermaid 源码");
+  source.setAttribute("aria-label", "Mermaid ソース");
 
   const preview = documentView.createElement("div");
   preview.className = "mermaid-inline-preview";
@@ -656,8 +656,8 @@ export function activateMermaidEditors(documentView) {
   for (const diagram of documentView?.querySelectorAll(".mermaid-rendered") || []) {
     diagram.tabIndex = 0;
     diagram.setAttribute("role", "button");
-    diagram.setAttribute("aria-label", "Mermaid 图表，双击或按 Enter 编辑");
-    diagram.title = "双击编辑 Mermaid 图表";
+    diagram.setAttribute("aria-label", "Mermaid 図。ダブルクリックまたは Enter キーで編集");
+    diagram.title = "ダブルクリックで Mermaid 図を編集";
     diagram.addEventListener("dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -931,11 +931,11 @@ function inlineNodeToMarkdown(node) {
   if (tag === "code") return `\`${(element.textContent || "").replaceAll("`", "\\`")}\``;
   if (tag === "a") {
     if (element.classList.contains("anchor") && !element.textContent) return "";
-    return `[${inner() || escapeMarkdownText(element.getAttribute("href") || "链接")}](${element.getAttribute("href") || ""})`;
+    return `[${inner() || escapeMarkdownText(element.getAttribute("href") || "リンク")}](${element.getAttribute("href") || ""})`;
   }
   if (tag === "img") {
     const source = element.dataset.mdpdfSrc || element.getAttribute("src") || "";
-    return `![${escapeMarkdownText(element.getAttribute("alt") || "图片")}](${source})`;
+    return `![${escapeMarkdownText(element.getAttribute("alt") || "画像")}](${source})`;
   }
   if (tag === "input") return "";
   return inner();
@@ -1075,25 +1075,25 @@ function applyMarkdownFormat(action) {
     case "quote": command("formatBlock", "blockquote"); break;
     case "unordered-list": command("insertUnorderedList"); break;
     case "ordered-list": command("insertOrderedList"); break;
-    case "task": insertVisualHtml(context, '<ul><li><input type="checkbox"> 任务</li></ul>'); return;
+    case "task": insertVisualHtml(context, '<ul><li><input type="checkbox"> タスク</li></ul>'); return;
     case "link": {
-      const url = window.prompt("链接地址", "https://");
+      const url = window.prompt("リンク先 URL", "https://");
       if (url) command("createLink", url);
       break;
     }
     case "image": {
-      const source = window.prompt("工作区内的图片路径", "image.png");
+      const source = window.prompt("ワークスペース内の画像パス", "image.png");
       if (source) {
-        insertVisualHtml(context, `<img src="${escapeHtml(source)}" data-mdpdf-src="${escapeHtml(source)}" alt="图片">`);
+        insertVisualHtml(context, `<img src="${escapeHtml(source)}" data-mdpdf-src="${escapeHtml(source)}" alt="画像">`);
         window.setTimeout(() => { syncVisualEditor(); updatePreview(); }, 0);
       }
       return;
     }
-    case "code-block": insertVisualHtml(context, '<pre data-language="text"><code>代码内容</code></pre>'); return;
-    case "table": insertVisualHtml(context, '<table><thead><tr><th>列一</th><th>列二</th><th>列三</th></tr></thead><tbody><tr><td>内容</td><td>内容</td><td>内容</td></tr></tbody></table>'); return;
+    case "code-block": insertVisualHtml(context, '<pre data-language="text"><code>コード内容</code></pre>'); return;
+    case "table": insertVisualHtml(context, '<table><thead><tr><th>列1</th><th>列2</th><th>列3</th></tr></thead><tbody><tr><td>内容</td><td>内容</td><td>内容</td></tr></tbody></table>'); return;
     case "mermaid":
       elements.mermaidToggle.checked = true;
-      insertVisualHtml(context, '<pre data-language="mermaid"><code>graph TD\n  A[开始] --&gt; B[结束]</code></pre>');
+      insertVisualHtml(context, '<pre data-language="mermaid"><code>graph TD\n  A[開始] --&gt; B[終了]</code></pre>');
       saveSettings();
       window.setTimeout(() => { syncVisualEditor(); updatePreview(); }, 0);
       return;
@@ -1108,7 +1108,7 @@ function activateVisualEditor() {
   if (!editable || !state.active) return;
   editable.contentEditable = "true";
   editable.spellcheck = true;
-  editable.setAttribute("aria-label", "直接编辑文档内容");
+  editable.setAttribute("aria-label", "文書内容を直接編集");
   activateMermaidEditors(documentView);
   editable.addEventListener("input", queueVisualSync);
   editable.addEventListener("paste", (event) => {

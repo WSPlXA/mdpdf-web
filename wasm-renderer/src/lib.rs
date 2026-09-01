@@ -564,7 +564,7 @@ fn render_toc(html: &str) -> String {
     if items.is_empty() {
         String::new()
     } else {
-        format!("<nav class=\"doc-toc\"><h2>目录</h2><ol>{items}</ol></nav>")
+        format!("<nav class=\"doc-toc\"><h2>目次</h2><ol>{items}</ol></nav>")
     }
 }
 

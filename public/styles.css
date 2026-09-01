@@ -80,7 +80,7 @@ button.danger { border-color: var(--danger); background: var(--danger); color: w
 .settings-panel[hidden] { display: none; }
 .setting-group { min-width: 0; padding: 10px; display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
 .setting-group > strong { font-size: 12px; color: var(--ink); }
-.setting-group > label:not(.enable-field) { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+.setting-group > label:not(.enable-field) { display: grid; grid-template-columns: 82px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
 .setting-row { display: grid; align-items: center; gap: 8px; }
 .setting-row label { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px; color: var(--muted); white-space: nowrap; }
 .compact-fields { grid-template-columns: 1fr 1fr; }
@@ -88,7 +88,7 @@ button.danger { border-color: var(--danger); background: var(--danger); color: w
 .color-fields input[type="color"] { width: 100%; height: 30px; padding: 2px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
 .margin-fields { grid-template-columns: repeat(4, 1fr); }
 .margin-fields label { grid-template-columns: auto minmax(42px, 1fr); }
-.check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.check-grid { display: grid; grid-template-columns: .85fr 1.15fr; gap: 7px; }
 .check-grid label, .enable-field { display: flex; align-items: center; gap: 5px; color: var(--ink); white-space: nowrap; }
 .header-footer-settings { gap: 9px; }
 .header-footer-row { display: grid; grid-template-columns: 66px minmax(0, 1fr) 62px; gap: 7px; align-items: center; }

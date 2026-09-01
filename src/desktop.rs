@@ -134,7 +134,7 @@ pub async fn choose_workspace(
     let selected = app
         .dialog()
         .file()
-        .set_title("Markdown 文件夹を開く")
+        .set_title("Markdown フォルダを開く")
         .blocking_pick_folder();
     let Some(selected) = selected else {
         return Ok(None);
